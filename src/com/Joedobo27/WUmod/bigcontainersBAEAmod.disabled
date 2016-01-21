@@ -1,0 +1,26 @@
+classname=com.Joedobo27.WUmod.BigContainersBAEAMod
+classpath=bigcontainersBAEAmod.jar
+
+#This controls changing all non-liquid holding containers and a couple liquid holders to hold a volume of 120m cubed or 1,728,000 L.
+#Default is false and this disables any related changes.
+makeContainersBig=false
+
+#This removes all one per tile limitations.
+#Default is false and this disables any related changes.
+removeOnePerTileLimits=false
+
+#This resizes the pelt so its the same size as a pumpkin. The game's graphic doesn't change.
+#Default is false and this disables any related changes.
+resizePelt=false
+
+#This changes a few items I want to go in bulk containers: felled tree, pelt, saddle, stone and marble keystone, all fish, fishing hooks and lines.
+#Default is false and this disables any related changes.
+makeItemsBulk=false
+
+#This changes cochineal, woad and acron so they can be combined.
+#Default is false and this disables any related changes.
+makeItemsCombine=false
+
+#This removes all limits that require an items to be inside or outside.
+#Default is false and this disables any related changes.
+removeInsideOutsideLimits=false
