@@ -2,18 +2,15 @@ package com.Joedobo27.WUmod;
 
 import com.wurmonline.server.items.*;
 import org.gotti.wurmunlimited.modloader.ReflectionUtil;
-import org.gotti.wurmunlimited.modloader.interfaces.Configurable;
-import org.gotti.wurmunlimited.modloader.interfaces.Initable;
-import org.gotti.wurmunlimited.modloader.interfaces.ServerStartedListener;
-import org.gotti.wurmunlimited.modloader.interfaces.WurmMod;
+import org.gotti.wurmunlimited.modloader.interfaces.*;
 
 import java.lang.reflect.Field;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 
+@SuppressWarnings("UnusedAssignment")
 public class BigContainersBAEAMod implements WurmMod, Initable, ServerStartedListener, Configurable {
 
     private boolean makeContainersBig = false;
@@ -22,7 +19,7 @@ public class BigContainersBAEAMod implements WurmMod, Initable, ServerStartedLis
     private boolean makeItemsBulk = false;
     private boolean makeItemsCombine = false;
     private boolean removeInsideOutsideLimits = false;
-    private Logger logger = Logger.getLogger(BigContainersBAEAMod.class.getName());
+    private static Logger logger = Logger.getLogger(BigContainersBAEAMod.class.getName());
 
     @Override
     public void configure(Properties properties) {
@@ -36,174 +33,165 @@ public class BigContainersBAEAMod implements WurmMod, Initable, ServerStartedLis
 
     @Override
     public void onServerStarted() {
+        ArrayList<Boolean> optionSwitches = new ArrayList<>(Arrays.asList(makeContainersBig, removeOnePerTileLimits,
+                resizePelt, makeItemsBulk, makeItemsCombine, removeInsideOutsideLimits));
+        ArrayList<Integer> bigLiquidHolders = new ArrayList<>(Arrays.asList(ItemList.barrelHuge, ItemList.barrelLarge, ItemList.stoneFountain,
+                ItemList.stoneFountain2));
+        ArrayList<Integer> makeBulk = new ArrayList<>(Arrays.asList(ItemList.logHuge, ItemList.pelt, ItemList.saddle, ItemList.stoneKeystone,
+                ItemList.marbleKeystone, ItemList.fishingHookWood, ItemList.fishingHookIron, ItemList.fishingHookWoodAndString,
+                ItemList.fishingHookIronAndString )); // in addition by default all items of type fish or gem.
+        ArrayList<Integer> makeCombine = new ArrayList<>(Arrays.asList(ItemList.cochineal, ItemList.woad, ItemList.acorn));
 
-        int makeContainersBigCount = 0;
-        int removeOnePerTileLimitsCount = 0;
-        int makeItemsBulkCount = 0;
-        int makeItemsCombineCount = 0;
-        int removeInsideOutsideLimitsCount = 0;
-
-        //<editor-fold desc="Get Fields for reflection">
-        Map<Integer, ItemTemplate> fieldTemplates = null;
-        Field fieldOnePerTile = null;
-        Field fieldUsesSpecifiedContainerSizes = null;
-        Field fieldIsTransportable;
-        Field fieldCentimetersX = null;
-        Field fieldCentimetersY = null;
-        Field fieldCentimetersZ = null;
-        Field fieldWeight = null;
-        Field fieldBulk = null;
-        Field fieldCombine = null;
-        Field fieldOutsideonly = null;
-        Field fieldInsideOnly = null;
-        Field fieldUseOnGroundOnly;
-        Field fieldGem = null;
         try {
-            fieldTemplates = ReflectionUtil.getPrivateField(
-                        ItemTemplateFactory.class, ReflectionUtil.getField(ItemTemplateFactory.class, "templates"));
-            fieldOnePerTile = ReflectionUtil.getField(ItemTemplate.class, "onePerTile");
-            fieldUsesSpecifiedContainerSizes = ReflectionUtil.getField(ItemTemplate.class, "usesSpecifiedContainerSizes");
-            fieldIsTransportable = ReflectionUtil.getField(ItemTemplate.class, "isTransportable");
-            fieldCentimetersX = ReflectionUtil.getField(ItemTemplate.class, "centimetersX");
-            fieldCentimetersY = ReflectionUtil.getField(ItemTemplate.class, "centimetersY");
-            fieldCentimetersZ = ReflectionUtil.getField(ItemTemplate.class, "centimetersZ");
-            fieldWeight = ReflectionUtil.getField(ItemTemplate.class, "weight");
-            fieldBulk = ReflectionUtil.getField(ItemTemplate.class, "bulk");
-            fieldCombine = ReflectionUtil.getField(ItemTemplate.class, "combine");
-            fieldOutsideonly = ReflectionUtil.getField(ItemTemplate.class, "outsideonly");
-            fieldInsideOnly = ReflectionUtil.getField(ItemTemplate.class, "insideOnly");
-            fieldUseOnGroundOnly = ReflectionUtil.getField(ItemTemplate.class, "useOnGroundOnly");
-            fieldGem = ReflectionUtil.getField(ItemTemplate.class, "gem");
-        } catch (IllegalAccessException | NoSuchFieldException e) {
+            int makeContainersBigCount = makeContainersBigReflection(optionSwitches, bigLiquidHolders);
+            int removeOnePerTileLimitsCount = removeOnePerTileLimitsReflection(optionSwitches);
+            resizePeltReflection(optionSwitches);
+            int makeItemsBulkCount = makeItemsBulkReflection(optionSwitches, makeBulk);
+            int makeItemsCombineCount = makeItemsCombineReflection(optionSwitches, makeCombine);
+            int removeInsideOutsideLimitsCount = removeInsideOutsideLimitsReflection(optionSwitches);
+
+            logger.log(Level.INFO, "Number of Containers maxed to 1,728,000 L is " + Integer.toString(makeContainersBigCount));
+            logger.log(Level.INFO, "Number of one per tile restrictions removed is " + Integer.toString(removeOnePerTileLimitsCount));
+            logger.log(Level.INFO, "Number of items marked as bulk is " + Integer.toString(makeItemsBulkCount));
+            logger.log(Level.INFO, "Number of items marked as combine is " + Integer.toString(makeItemsCombineCount));
+            logger.log(Level.INFO, "Number of inside or outside only flags removed is " + Integer.toString(removeInsideOutsideLimitsCount));
+        } catch (NoSuchFieldException | IllegalAccessException e) {
             e.printStackTrace();
         }
-        //</editor-fold>
-
-        // ******************** start iteration through all the templates******************************
-        for (ItemTemplate template : fieldTemplates.values()) {
-            // *******************Set internal sizes big for select templates.*************************
-            Integer itemId = template.getTemplateId();
-            if (makeContainersBig) {
-                if (template.isHollow() && (!template.isContainerLiquid() || itemId == ItemList.barrelHuge || itemId == ItemList.barrelLarge ||
-                        itemId == ItemList.stoneFountain || itemId == ItemList.stoneFountain2 || itemId == ItemList.amphoraLargePottery)) {
-                    if (!template.usesSpecifiedContainerSizes()) {
-                        try {
-                            ReflectionUtil.setPrivateField(template, fieldUsesSpecifiedContainerSizes, Boolean.TRUE);
-                        } catch (IllegalAccessException e) {
-                            e.printStackTrace();
-                        }
-                    }
-                    template.setContainerSize(1200, 1200, 1200);
-                    makeContainersBigCount++;
-                }
-            }
-            //*********Remove one per tile restriction.*****************
-            if (removeOnePerTileLimits) {
-
-                Boolean onePerTile = null;
-                try {
-                    onePerTile = ReflectionUtil.getPrivateField(template, fieldOnePerTile);
-                } catch (IllegalAccessException e) {
-                    e.printStackTrace();
-                }
-                if (onePerTile) {
-                    try {
-                        ReflectionUtil.setPrivateField(template, fieldOnePerTile, Boolean.FALSE);
-                    } catch (IllegalAccessException e) {
-                        e.printStackTrace();
-                    }
-                    removeOnePerTileLimitsCount++;
-                }
-            }
-            /*
-            //***************Add Transportable flag to select templates**********************
-            if (itemId == STONE_ALTAR || itemId == TRASH_HEAP || itemId == ROWING_BOAT || itemId == WOOD_ALTAR
-                    || itemId == SILVER_ALTAR || itemId == GOLD_ALTAR) {
-                if (!template.isTransportable()) {
-                    ReflectionUtil.setPrivateField(template, fieldIsTransportable, Boolean.TRUE);
-                }
-            }
-            */
-            //*****************redo size & weight for select templates**********************
-            if (resizePelt) {
-                if (itemId == ItemList.pelt) {
-                    try {
-                        ReflectionUtil.setPrivateField(template, fieldCentimetersX, 10);
-                        ReflectionUtil.setPrivateField(template, fieldCentimetersY, 10);
-                        ReflectionUtil.setPrivateField(template, fieldCentimetersZ, 10);
-                        ReflectionUtil.setPrivateField(template, fieldWeight, 100);
-                    } catch (IllegalAccessException e) {
-                        e.printStackTrace();
-                    }
-                    logger.log(Level.INFO, "Pelt resized.");
-                }
-            }
-            //****************add bulk flag to select templates***********************
-            if (makeItemsBulk) {
-                Boolean isGem = null;
-                try {
-                    isGem = ReflectionUtil.getPrivateField(template, fieldGem);
-                } catch (IllegalAccessException e) {
-                    e.printStackTrace();
-                }
-                if (itemId == ItemList.logHuge || itemId == ItemList.pelt || itemId == ItemList.saddle || itemId == ItemList.stoneKeystone ||
-                        itemId == ItemList.marbleKeystone || template.isFish() || itemId == ItemList.fishingHookWood ||
-                        itemId == ItemList.fishingHookIron || itemId == ItemList.fishingHookWoodAndString ||
-                        itemId == ItemList.fishingHookIronAndString || isGem) {
-                    try {
-                        ReflectionUtil.setPrivateField(template, fieldBulk, Boolean.TRUE);
-                    } catch (IllegalAccessException e) {
-                        e.printStackTrace();
-                    }
-                    makeItemsBulkCount++;
-                }
-            }
-            //***************add combine flags to select templates*********************
-            if (makeItemsCombine) {
-                if (itemId == ItemList.cochineal || itemId == ItemList.woad || itemId == ItemList.acorn) {
-                    try {
-                        ReflectionUtil.setPrivateField(template, fieldCombine, Boolean.TRUE);
-                    } catch (IllegalAccessException e) {
-                        e.printStackTrace();
-                    }
-                    makeItemsCombineCount++;
-                }
-            }
-            //*****************remove outside and inside only flags from all**********************
-            if (removeInsideOutsideLimits) {
-                Boolean insideOnly = null;
-                try {
-                    insideOnly = ReflectionUtil.getPrivateField(template, fieldInsideOnly);
-                } catch (IllegalAccessException e) {
-                    e.printStackTrace();
-                }
-                if (template.isOutsideOnly() || insideOnly) {
-                    try {
-                        ReflectionUtil.setPrivateField(template, fieldOutsideonly, Boolean.FALSE);
-                        ReflectionUtil.setPrivateField(template, fieldInsideOnly, Boolean.FALSE);
-                    } catch (IllegalAccessException e) {
-                        e.printStackTrace();
-                    }
-                    removeInsideOutsideLimitsCount++;
-                }
-            }
-            //*****************************remove ground only flags***************************
-            /*
-            if (itemId == BSB || itemId == FSB){
-                if (template.isUseOnGroundOnly()) {
-                    ReflectionUtil.setPrivateField(template, fieldUseOnGroundOnly, Boolean.FALSE);
-                }
-            }
-            */
-        }
-        logger.log(Level.INFO, "Number of Containers maxed to 1,728,000 L is " + Integer.toString(makeContainersBigCount));
-        logger.log(Level.INFO, "Number of one per tile restrictions removed is " + Integer.toString(removeOnePerTileLimitsCount));
-        logger.log(Level.INFO, "Number of items marked as bulk is " + Integer.toString(makeItemsBulkCount));
-        logger.log(Level.INFO, "Number of items marked as combine is " + Integer.toString(makeItemsCombineCount));
-        logger.log(Level.INFO, "Number of inside or outside only flags removed is " + Integer.toString(removeInsideOutsideLimitsCount));
     }
 
     @Override
     public void init() {
+    }
+
+    private static int makeContainersBigReflection(ArrayList<Boolean> optionSwitches, ArrayList<Integer> makeBig) throws NoSuchFieldException, IllegalAccessException {
+        int makeContainersBigCount = 0;
+        if (!optionSwitches.get(0))
+            return makeContainersBigCount;
+        Map<Integer, ItemTemplate> fieldTemplates = ReflectionUtil.getPrivateField(
+                ItemTemplateFactory.class, ReflectionUtil.getField(ItemTemplateFactory.class, "templates"));
+        Field fieldUsesSpecifiedContainerSizes = ReflectionUtil.getField(ItemTemplate.class, "usesSpecifiedContainerSizes");
+        for (ItemTemplate template : fieldTemplates.values()) {
+            Integer itemId = template.getTemplateId();
+            if (template.isHollow() && (!template.isContainerLiquid() || makeBig.contains(itemId))) {
+                if (!template.usesSpecifiedContainerSizes())
+                    ReflectionUtil.setPrivateField(template, fieldUsesSpecifiedContainerSizes, Boolean.TRUE);
+                template.setContainerSize(1200, 1200, 1200);
+                makeContainersBigCount++;
+            }
+        }
+        return makeContainersBigCount;
+    }
+
+    private static int removeOnePerTileLimitsReflection(ArrayList<Boolean> optionSwitches) throws NoSuchFieldException, IllegalAccessException {
+        int removeOnePerTileLimitsCount = 0;
+        if (!optionSwitches.get(1))
+            return removeOnePerTileLimitsCount;
+        Map<Integer, ItemTemplate> fieldTemplates = ReflectionUtil.getPrivateField(
+                ItemTemplateFactory.class, ReflectionUtil.getField(ItemTemplateFactory.class, "templates"));
+        Field fieldOnePerTile = ReflectionUtil.getField(ItemTemplate.class, "onePerTile");
+        for (ItemTemplate template : fieldTemplates.values()) {
+            Boolean onePerTile = null;
+            onePerTile = ReflectionUtil.getPrivateField(template, fieldOnePerTile);
+            if (onePerTile) {
+                ReflectionUtil.setPrivateField(template, fieldOnePerTile, Boolean.FALSE);
+                removeOnePerTileLimitsCount++;
+            }
+        }
+        return removeOnePerTileLimitsCount;
+    }
+
+    private static void resizePeltReflection(ArrayList<Boolean> optionSwitches) throws NoSuchFieldException, IllegalAccessException {
+        if (!optionSwitches.get(2))
+            return;
+        Map<Integer, ItemTemplate> fieldTemplates = ReflectionUtil.getPrivateField(
+                ItemTemplateFactory.class, ReflectionUtil.getField(ItemTemplateFactory.class, "templates"));
+        Field fieldCentimetersX = ReflectionUtil.getField(ItemTemplate.class, "centimetersX");
+        Field fieldCentimetersY = ReflectionUtil.getField(ItemTemplate.class, "centimetersY");
+        Field fieldCentimetersZ = ReflectionUtil.getField(ItemTemplate.class, "centimetersZ");
+        Field fieldWeight = ReflectionUtil.getField(ItemTemplate.class, "weight");
+        for (ItemTemplate template : fieldTemplates.values()) {
+            Integer itemId = template.getTemplateId();
+            if (itemId == ItemList.pelt) {
+                try {
+                    ReflectionUtil.setPrivateField(template, fieldCentimetersX, 10);
+                    ReflectionUtil.setPrivateField(template, fieldCentimetersY, 10);
+                    ReflectionUtil.setPrivateField(template, fieldCentimetersZ, 10);
+                    ReflectionUtil.setPrivateField(template, fieldWeight, 100);
+                } catch (IllegalAccessException e) {
+                    e.printStackTrace();
+                }
+                logger.log(Level.INFO, "Pelt resized.");
+            }
+        }
+    }
+
+    private static int makeItemsBulkReflection(ArrayList<Boolean> optionSwitches, ArrayList<Integer> makeBulk) throws NoSuchFieldException, IllegalAccessException {
+        int makeItemsBulkCount = 0;
+        if (!optionSwitches.get(3))
+            return makeItemsBulkCount;
+        Map<Integer, ItemTemplate> fieldTemplates = ReflectionUtil.getPrivateField(
+                ItemTemplateFactory.class, ReflectionUtil.getField(ItemTemplateFactory.class, "templates"));
+        Field fieldGem = ReflectionUtil.getField(ItemTemplate.class, "gem");
+        Field fieldBulk = ReflectionUtil.getField(ItemTemplate.class, "bulk");
+        for (ItemTemplate template : fieldTemplates.values()) {
+            Integer itemId = template.getTemplateId();
+            Boolean isGem = ReflectionUtil.getPrivateField(template, fieldGem);
+            if (template.isFish() || isGem || makeBulk.contains(itemId)) {
+                ReflectionUtil.setPrivateField(template, fieldBulk, Boolean.TRUE);
+                makeItemsBulkCount++;
+            }
+        }
+        return makeItemsBulkCount;
+    }
+
+    private static int makeItemsCombineReflection(ArrayList<Boolean> optionSwitches, ArrayList<Integer> makeCombine) throws NoSuchFieldException, IllegalAccessException {
+        int makeItemsCombineCount = 0;
+        if (!optionSwitches.get(4))
+            return makeItemsCombineCount;
+        Map<Integer, ItemTemplate> fieldTemplates = ReflectionUtil.getPrivateField(
+                ItemTemplateFactory.class, ReflectionUtil.getField(ItemTemplateFactory.class, "templates"));
+        Field fieldCombine = ReflectionUtil.getField(ItemTemplate.class, "combine");
+        for (ItemTemplate template : fieldTemplates.values()) {
+            Integer itemId = template.getTemplateId();
+            if (makeCombine.contains(itemId)) {
+                ReflectionUtil.setPrivateField(template, fieldCombine, Boolean.TRUE);
+                makeItemsCombineCount++;
+            }
+        }
+        if (aaaJoeCommon.modifiedCheckSaneAmounts) {
+            ArrayList<Integer> abc = ReflectionUtil.getPrivateField(CreationEntry.class, ReflectionUtil.getField(CreationEntry.class,
+                    "largeMaterialRatioDifferentials"));
+            ArrayList<Integer> b = new ArrayList<>(Arrays.asList(ItemList.woad, ItemList.dyeBlue, ItemList.acorn, ItemList.tannin,
+                    ItemList.cochineal, ItemList.dyeRed, ItemList.dye));
+            for (int a : b) {
+                if (!abc.contains(a))
+                    abc.add(a);
+            }
+        }
+        return makeItemsCombineCount;
+    }
+
+    private static int removeInsideOutsideLimitsReflection(ArrayList<Boolean> optionSwitches) throws NoSuchFieldException, IllegalAccessException {
+        int removeInsideOutsideLimitsCount = 0;
+        if (!optionSwitches.get(5))
+            return removeInsideOutsideLimitsCount;
+        Map<Integer, ItemTemplate> fieldTemplates = ReflectionUtil.getPrivateField(
+                ItemTemplateFactory.class, ReflectionUtil.getField(ItemTemplateFactory.class, "templates"));
+        Field fieldOutsideonly = ReflectionUtil.getField(ItemTemplate.class, "outsideonly");
+        Field fieldInsideOnly = ReflectionUtil.getField(ItemTemplate.class, "insideOnly");
+        for (ItemTemplate template : fieldTemplates.values()) {
+            Boolean insideOnly = ReflectionUtil.getPrivateField(template, fieldInsideOnly);
+            if (template.isOutsideOnly() || insideOnly) {
+                try {
+                    ReflectionUtil.setPrivateField(template, fieldOutsideonly, Boolean.FALSE);
+                    ReflectionUtil.setPrivateField(template, fieldInsideOnly, Boolean.FALSE);
+                } catch (IllegalAccessException e) {
+                    e.printStackTrace();
+                }
+                removeInsideOutsideLimitsCount++;
+            }
+        }
+        return removeInsideOutsideLimitsCount;
     }
 }
