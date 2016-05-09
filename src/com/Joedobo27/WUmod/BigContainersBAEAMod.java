@@ -11,14 +11,14 @@ import java.util.logging.Logger;
 
 
 @SuppressWarnings("UnusedAssignment")
-public class BigContainersBAEAMod implements WurmMod, Initable, ServerStartedListener, Configurable {
+public class BigContainersBAEAMod implements WurmServerMod, ServerStartedListener, Configurable {
 
-    private boolean makeContainersBig = false;
-    private boolean removeOnePerTileLimits = false;
-    private boolean resizePelt = false;
-    private boolean makeItemsBulk = false;
-    private boolean makeItemsCombine = false;
-    private boolean removeInsideOutsideLimits = false;
+    private static boolean makeContainersBig = false;
+    private static boolean removeOnePerTileLimits = false;
+    private static boolean resizePelt = false;
+    private static boolean makeItemsBulk = false;
+    private static boolean makeItemsCombine = false;
+    private static boolean removeInsideOutsideLimits = false;
     private static Logger logger = Logger.getLogger(BigContainersBAEAMod.class.getName());
 
     @Override
@@ -58,10 +58,6 @@ public class BigContainersBAEAMod implements WurmMod, Initable, ServerStartedLis
         } catch (NoSuchFieldException | IllegalAccessException e) {
             e.printStackTrace();
         }
-    }
-
-    @Override
-    public void init() {
     }
 
     private static int makeContainersBigReflection(ArrayList<Boolean> optionSwitches, ArrayList<Integer> makeBig) throws NoSuchFieldException, IllegalAccessException {
@@ -164,10 +160,7 @@ public class BigContainersBAEAMod implements WurmMod, Initable, ServerStartedLis
                     "largeMaterialRatioDifferentials"));
             ArrayList<Integer> b = new ArrayList<>(Arrays.asList(ItemList.woad, ItemList.dyeBlue, ItemList.acorn, ItemList.tannin,
                     ItemList.cochineal, ItemList.dyeRed, ItemList.dye));
-            for (int a : b) {
-                if (!abc.contains(a))
-                    abc.add(a);
-            }
+            b.stream().filter(a -> !abc.contains(a)).forEach(abc::add);
         }
         return makeItemsCombineCount;
     }
