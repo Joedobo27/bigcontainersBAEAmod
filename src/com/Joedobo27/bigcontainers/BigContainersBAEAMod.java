@@ -2,8 +2,10 @@ package com.Joedobo27.bigcontainers;
 
 import com.wurmonline.server.items.*;
 import javassist.*;
+import javassist.bytecode.BadBytecode;
+import javassist.bytecode.Bytecode;
+import javassist.bytecode.Opcode;
 import javassist.expr.ExprEditor;
-import javassist.expr.FieldAccess;
 import javassist.expr.MethodCall;
 import org.gotti.wurmunlimited.modloader.ReflectionUtil;
 import org.gotti.wurmunlimited.modloader.classhooks.HookManager;
@@ -13,6 +15,10 @@ import java.lang.reflect.Field;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import static com.Joedobo27.bigcontainers.BytecodeTools.addConstantPoolReference;
+import static com.Joedobo27.bigcontainers.BytecodeTools.findConstantPoolReference;
+import static com.Joedobo27.bigcontainers.BytecodeTools.findReplaceCodeIterator;
 
 
 @SuppressWarnings({"UnusedAssignment", "unused"})
@@ -63,7 +69,7 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
 
             makeItemsCombineBytecode();
             unlimitedSpaceBytecode();
-        } catch (NotFoundException | CannotCompileException e) {
+        } catch (NotFoundException | CannotCompileException | BadBytecode e) {
             logger.log(Level.WARNING, e.toString(), e);
         }
     }
@@ -96,45 +102,96 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         }
     }
 
-    private static void makeItemsCombineBytecode() throws CannotCompileException, NotFoundException {
+    private static void makeItemsCombineBytecode() throws CannotCompileException, NotFoundException, BadBytecode {
         if (!makeItemsCombine)
             return;
 
-        CtMethod ctmCheckSaneAmounts = creationEntry.getCtClass().getDeclaredMethod("checkSaneAmounts");
-        ctmCheckSaneAmounts.instrument(new ExprEditor() {
+        // In CreationEntry.checkSaneAmounts()
+        // Byte code change: this.objectCreated != 73 to this.getObjectCreated() == 73
+        // Do this because it's not possible to instrument on a field and have the replace function use a returned value from a hook method.
+        byte[] findPoolResult;
+        Bytecode find = new Bytecode(creationEntry.getConstPool());
+        find.addOpcode(Opcode.ALOAD_0);
+        find.addOpcode(Opcode.GETFIELD);
+        findPoolResult = findConstantPoolReference(creationEntry.getConstPool(), "// Field objectCreated:I");
+        find.add(findPoolResult[0], findPoolResult[1]);
+        find.addOpcode(Opcode.BIPUSH);
+        find.add(73);
+
+        Bytecode replace = new Bytecode(creationEntry.getConstPool());
+        replace.addOpcode(Opcode.ALOAD_0);
+        replace.addOpcode(Opcode.INVOKEVIRTUAL);
+        findPoolResult = addConstantPoolReference(creationEntry.getConstPool(), "// Method com/wurmonline/server/items/CreationEntry.getObjectCreated:()I");
+        replace.add(findPoolResult[0], findPoolResult[1]);
+        replace.addOpcode(Opcode.BIPUSH);
+        replace.add(73);
+
+        JAssistMethodData checkSaneAmounts = new JAssistMethodData(creationEntry,
+                "(Lcom/wurmonline/server/items/Item;ILcom/wurmonline/server/items/Item;ILcom/wurmonline/server/items/ItemTemplate;Lcom/wurmonline/server/creatures/Creature;Z)V",
+                "checkSaneAmounts");
+        findReplaceCodeIterator(checkSaneAmounts.getCodeIterator(), find, replace);
+
+
+        int[] successes = new int[1];
+        Arrays.fill(successes, 0);
+        checkSaneAmounts.getCtMethod().instrument(new ExprEditor() {
             @Override
-            public void edit(FieldAccess fieldAccess) throws CannotCompileException {
-                if (Objects.equals("objectCreated", fieldAccess.getFieldName())){
-                    fieldAccess.replace("$_ = com.Joedobo27.bigcontainers.BigContainersBAEAMod.checkSaneAmountsExceptionsHook($_);");
-                    logger.log(Level.FINE, "CreationEntry.class, checkSaneAmounts(), installed hook at line: " + fieldAccess.getLineNumber());
+            public void edit(MethodCall methodCall) throws CannotCompileException {
+                if (Objects.equals("getObjectCreated", methodCall.getMethodName())){
+                    methodCall.replace("$_ = com.Joedobo27.bigcontainers.BigContainersBAEAMod.checkSaneAmountsExceptionsHook( $0.getObjectCreated(), sourceMax, targetMax);");
+                    logger.log(Level.FINE, "CreationEntry.class, checkSaneAmounts(), installed hook at line: " + methodCall.getLineNumber());
+                    successes[0] = 1;
                 }
             }
         });
+
+        boolean changesSuccessful = !Arrays.stream(successes).anyMatch(value -> value == 0);
+        if (changesSuccessful) {
+            logger.log(Level.INFO, "makeItemsCombine option changes SUCCESSFUL");
+        } else {
+            logger.log(Level.INFO, "makeItemsCombine option changes FAILURE");
+            logger.log(Level.FINE, Arrays.toString(successes));
+        }
     }
+
 
     private static void unlimitedSpaceBytecode() throws NotFoundException, CannotCompileException{
         if (!unlimitedSpace)
             return;
+
+        int[] successes = new int[16];
+        Arrays.fill(successes, 0);
+
         // Alter Item.hasSpaceFor() so it always returns true.
-        CtMethod ctmHasSpaceFor = itemClass.getCtClass().getMethod("hasSpaceFor", "(I)Z");
-        ctmHasSpaceFor.setBody("return true;");
+        itemClass.getCtClass().getMethod("hasSpaceFor", "(I)Z").setBody("return true;");
 
         // Alter CargoTransportationMethods.targetCanNotBeInsertedCheck() so the volume and x,y,z measurements return max int.
-                CtMethod ctmTargetCanNotBeInsertedCheck = cargoTransportationMethods.getCtClass().getDeclaredMethod("targetCanNotBeInsertedCheck");
+        CtMethod ctmTargetCanNotBeInsertedCheck = cargoTransportationMethods.getCtClass().getDeclaredMethod("targetCanNotBeInsertedCheck");
+
+
         ctmTargetCanNotBeInsertedCheck.instrument(new ExprEditor() {
             @Override
             public void edit(MethodCall methodCall) throws CannotCompileException {
                 if (Objects.equals("getFreeVolume", methodCall.getMethodName())){
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
+                    logger.log(Level.FINE, "targetCanNotBeInsertedCheck v: " + methodCall.getLineNumber());
+                    successes[0] = 1;
+
                 }
                 else if (Objects.equals("getContainerSizeX", methodCall.getMethodName())){
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
+                    logger.log(Level.FINE, "targetCanNotBeInsertedCheck x: " + methodCall.getLineNumber());
+                    successes[1] = 1;
                 }
                 else if (Objects.equals("getContainerSizeY", methodCall.getMethodName())){
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
+                    logger.log(Level.FINE, "targetCanNotBeInsertedCheck y: " + methodCall.getLineNumber());
+                    successes[2] = 1;
                 }
                 else if (Objects.equals("getContainerSizeZ", methodCall.getMethodName())){
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
+                    logger.log(Level.FINE, "targetCanNotBeInsertedCheck z: " + methodCall.getLineNumber());
+                    successes[3] = 1;
                 }
             }
         });
@@ -145,6 +202,8 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
             public void edit(MethodCall methodCall) throws CannotCompileException {
                 if (Objects.equals("getFreeVolume", methodCall.getMethodName())){
                     methodCall.replace("$_ = 1001;");
+                    logger.log(Level.FINE, "dig v: " + methodCall.getLineNumber());
+                    successes[4] = 1;
                 }
             }
         });
@@ -156,37 +215,53 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
             public void edit(MethodCall methodCall) throws CannotCompileException {
                 if (Objects.equals("getFreeVolume", methodCall.getMethodName())){
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;;");
+                    logger.log(Level.FINE, "insertItem v: " + methodCall.getLineNumber());
+                    successes[5] = 1;
                 }
                 else if (Objects.equals("getContainerSizeX", methodCall.getMethodName())){
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
+                    logger.log(Level.FINE, "insertItem x: " + methodCall.getLineNumber());
+                    successes[6] = 1;
                 }
                 else if (Objects.equals("getContainerSizeY", methodCall.getMethodName())){
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
+                    logger.log(Level.FINE, "insertItem y: " + methodCall.getLineNumber());
+                    successes[7] = 1;
                 }
                 else if (Objects.equals("getContainerSizeZ", methodCall.getMethodName())){
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
+                    logger.log(Level.FINE, "insertItem z: " + methodCall.getLineNumber());
+                    successes[8] = 1;
                 }
             }
         });
 
         // About 2780 in bytecode
         // Alter Item.moveToItem() so all the x,y,z size fetching methods all return max int.
+        // note that changing the return value will alter indexOfBytecode() results for things afterwards. It may not match javap.exe.
         CtMethod ctmMoveToItem = itemClass.getCtClass().getMethod("moveToItem", "(Lcom/wurmonline/server/creatures/Creature;JZ)Z");
         ctmMoveToItem.instrument(new ExprEditor() {
             @Override
             public void edit(MethodCall methodCall) throws CannotCompileException {
                 if (Objects.equals("getSizeX", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 2780){
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
+                    logger.log(Level.FINE, "moveToItem x: " + methodCall.getLineNumber());
+                    successes[9] = 1;
                 }
-                else if (Objects.equals("getSizeY", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 2792) {
+                else if (Objects.equals("getSizeY", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 2801){
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
+                    logger.log(Level.FINE, "moveToItem y: " + methodCall.getLineNumber());
+                    successes[10] = 1;
                 }
-                else if (Objects.equals("getSizeZ", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 2804) {
+                else if (Objects.equals("getSizeZ", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 2822) {
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
+                    logger.log(Level.FINE, "moveToItem z: " + methodCall.getLineNumber());
+                    successes[11] = 1;
                 }
-                else if (Objects.equals("testInsertItem", methodCall.getClassName())){
-                    methodCall.replace("$_ = true;");
-                }
+                //else if (Objects.equals("testInsertItem", methodCall.getClassName())){
+                //    methodCall.replace("$_ = true;");
+                //    logger.log(Level.FINE, "moveToItem testInsertItem: " + methodCall.getLineNumber());
+                //}
             }
         });
 
@@ -197,18 +272,33 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
             public void edit(MethodCall methodCall) throws CannotCompileException {
                 if (Objects.equals("getFreeVolume", methodCall.getMethodName())){
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
+                    logger.log(Level.FINE, "testInsertHollowItem v: " + methodCall.getLineNumber());
+                    successes[12] = 1;
                 }
                 else if (Objects.equals("getContainerSizeX", methodCall.getMethodName())){
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
+                    logger.log(Level.FINE, "testInsertHollowItem x: " + methodCall.getLineNumber());
+                    successes[13] = 1;
                 }
                 else if (Objects.equals("getContainerSizeY", methodCall.getMethodName())){
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
+                    logger.log(Level.FINE, "testInsertHollowItem y: " + methodCall.getLineNumber());
+                    successes[14] = 1;
                 }
                 else if (Objects.equals("getContainerSizeZ", methodCall.getMethodName())){
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
+                    logger.log(Level.FINE, "testInsertHollowItem z: " + methodCall.getLineNumber());
+                    successes[15] = 1;
                 }
             }
         });
+        boolean changesSuccessful = !Arrays.stream(successes).anyMatch(value -> value == 0);
+        if (changesSuccessful) {
+            logger.log(Level.INFO, "unlimitedSpace option changes SUCCESSFUL");
+        } else {
+            logger.log(Level.INFO, "unlimitedSpace option changes FAILURE");
+            logger.log(Level.FINE, Arrays.toString(successes));
+        }
     }
 
     private static int makeContainersBigReflection(int[] makeBig) throws NoSuchFieldException, IllegalAccessException {
@@ -310,17 +400,18 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
     }
 
     /**
-     * Returning 73 servers as a way to disable certain code. This method is used as a expression editor hook to replace
+     * Returning 73 serves as a way to disable certain code. This method is used as a expression editor hook to replace
      * the returned value of this.objectCreated.
      * if (template.isCombine() && this.objectCreated != 73) {
      *
      * @param check int value, which is an entry from ItemList.
      * @return return an int.
      */
-    public static int checkSaneAmountsExceptionsHook(int check){
+    public static int checkSaneAmountsExceptionsHook(int check, int sourceMax, int targetMax){
         int[] exceptions = {ItemList.woad, ItemList.dyeBlue, ItemList.acorn, ItemList.tannin,
                 ItemList.cochineal, ItemList.dyeRed, ItemList.dye, ItemList.lye};
-        if (Arrays.stream(exceptions).filter(value -> Objects.equals(value, check)).count() > 0) {
+        boolean isLargeSizeDifferential = Arrays.stream(exceptions).anyMatch(value -> check == value);
+        if (isLargeSizeDifferential) {
             return 73;
         }else{
             return check;

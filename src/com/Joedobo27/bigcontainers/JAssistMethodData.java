@@ -1,5 +1,7 @@
 package com.Joedobo27.bigcontainers;
 
+import javassist.CtMethod;
+import javassist.bytecode.AccessFlag;
 import javassist.bytecode.CodeAttribute;
 import javassist.bytecode.CodeIterator;
 import javassist.bytecode.MethodInfo;
@@ -14,6 +16,7 @@ class JAssistMethodData {
     private MethodInfo methodInfo;
     private CodeAttribute codeAttribute;
     private CodeIterator codeIterator;
+    private CtMethod ctMethod;
 
     JAssistMethodData(JAssistClassData jAssistClassData, String descriptor, String methodName) throws NullPointerException {
         parentClass = jAssistClassData;
@@ -27,6 +30,25 @@ class JAssistMethodData {
             throw new NullPointerException();
         codeAttribute = methodInfo.getCodeAttribute();
         codeIterator = codeAttribute.iterator();
+        setCtMethod(descriptor, methodName);
+    }
+
+    private void setCtMethod(String descriptor, String methodName) {
+        boolean isPrivate = (parentClass.getClassFile().getAccessFlags() & (AccessFlag.PRIVATE)) != 0;
+        if (isPrivate){
+            ctMethod = Arrays.stream(parentClass.getCtClass().getDeclaredMethods())
+                    .filter((CtMethod value) -> Objects.equals(value.getGenericSignature(), descriptor))
+                    .filter((CtMethod value) -> Objects.equals(value.getName(), methodName))
+                    .findFirst()
+                    .orElse(null);
+        }
+        else {
+            ctMethod = Arrays.stream(parentClass.getCtClass().getMethods())
+                    .filter((CtMethod value) -> Objects.equals(value.getSignature(), descriptor))
+                    .filter((CtMethod value) -> Objects.equals(value.getName(), methodName))
+                    .findFirst()
+                    .orElse(null);
+        }
     }
 
     MethodInfo getMethodInfo() {
@@ -43,6 +65,10 @@ class JAssistMethodData {
 
     JAssistClassData getParentClass() {
         return parentClass;
+    }
+
+    CtMethod getCtMethod() {
+        return ctMethod;
     }
 
     /**

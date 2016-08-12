@@ -7,7 +7,7 @@ import javassist.bytecode.ClassFile;
 import javassist.bytecode.ConstPool;
 
 @SuppressWarnings("unused")
-class JAssistClassData{
+class JAssistClassData {
 
     private CtClass ctClass;
     private ClassFile classFile;

@@ -1,0 +1,432 @@
+package com.Joedobo27.bigcontainers;
+
+import javassist.bytecode.BadBytecode;
+import javassist.bytecode.Bytecode;
+import javassist.bytecode.CodeIterator;
+import javassist.bytecode.ConstPool;
+
+import java.util.Arrays;
+import java.util.LinkedList;
+import java.util.Objects;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+@SuppressWarnings("unused")
+class BytecodeTools {
+
+    private static final Logger logger = Logger.getLogger(BytecodeTools.class.getName());
+    private static final int EMPTY_INT = Integer.MAX_VALUE;
+
+    static boolean findReplaceCodeIterator(CodeIterator ci, Bytecode find, Bytecode replace) throws BadBytecode {
+
+        boolean toReturn = false;
+        byte[] findSimpleB = find.get();
+        LinkedList<Integer> findSimpleI = new LinkedList<>();
+        for (byte aFindSimpleB : findSimpleB) {
+            findSimpleI.add(Byte.toUnsignedInt(aFindSimpleB));
+        }
+        //noinspection UnusedAssignment
+        findSimpleB = null; // void out unused.
+
+        int index;
+        int bitLine;
+        int bitLine2;
+        int findSize = findSimpleI.size();
+        CIStack ciStack = new CIStack(findSize);
+
+        ci.begin();
+        while (ci.hasNext()) {
+            index = ci.next();
+            ciStack.indexPush(index);
+            switch (ci.lookAhead() - index){
+                case 1:
+                    ciStack.stackPush(ci.byteAt(index));
+                    break;
+                case 2:
+                    bitLine = ci.s16bitAt(index);
+                    ciStack.stackPush((bitLine & 0xff00) >>> 8);
+                    ciStack.stackPush(bitLine & 0x00ff);
+                    break;
+                case 3:
+                    bitLine = ci.s32bitAt(index);
+                    ciStack.stackPush((bitLine & 0xff000000) >>> 24);
+                    ciStack.stackPush((bitLine & 0x00ff0000) >>> 16);
+                    ciStack.stackPush((bitLine & 0x0000ff00) >>> 8);
+                    // not using the last byte
+                    break;
+                case 4:
+                    bitLine = ci.s32bitAt(index);
+                    ciStack.stackPush((bitLine & 0xff000000) >>> 24);
+                    ciStack.stackPush((bitLine & 0x00ff0000) >>> 16);
+                    ciStack.stackPush((bitLine & 0x0000ff00) >>> 8);
+                    ciStack.stackPush((bitLine & 0x000000ff));
+                    break;
+                case 5:
+                    bitLine = ci.s32bitAt(index);
+                    ciStack.stackPush((bitLine & 0xff000000) >>> 24);
+                    ciStack.stackPush((bitLine & 0x00ff0000) >>> 16);
+                    ciStack.stackPush((bitLine & 0x0000ff00) >>> 8);
+                    ciStack.stackPush((bitLine & 0x000000ff));
+                    bitLine2 = ci.byteAt(index + 4);
+                    ciStack.stackPush(bitLine2);
+                    break;
+                case 6:
+                    bitLine = ci.s32bitAt(index);
+                    ciStack.stackPush((bitLine & 0xff000000) >>> 24);
+                    ciStack.stackPush((bitLine & 0x00ff0000) >>> 16);
+                    ciStack.stackPush((bitLine & 0x0000ff00) >>> 8);
+                    ciStack.stackPush((bitLine & 0x000000ff));
+                    bitLine2 = ci.s16bitAt(index + 4);
+                    ciStack.stackPush((bitLine2 & 0xff00) >>> 8);
+                    ciStack.stackPush((bitLine2 & 0x00ff));
+                    break;
+                case 7:
+                    bitLine = ci.s32bitAt(index);
+                    ciStack.stackPush((bitLine & 0xff000000) >>> 24);
+                    ciStack.stackPush((bitLine & 0x00ff0000) >>> 16);
+                    ciStack.stackPush((bitLine & 0x0000ff00) >>> 8);
+                    ciStack.stackPush((bitLine & 0x000000ff));
+                    bitLine2 = ci.s32bitAt(index + 4);
+                    ciStack.stackPush((bitLine2 & 0xff000000) >>> 24);
+                    ciStack.stackPush((bitLine2 & 0x00ff0000) >>> 16);
+                    ciStack.stackPush((bitLine2 & 0x0000ff00) >>> 8);
+                    // not using the last byte
+                    break;
+                case 8:
+                    bitLine = ci.s32bitAt(index);
+                    ciStack.stackPush((bitLine & 0xff000000) >>> 24);
+                    ciStack.stackPush((bitLine & 0x00ff0000) >>> 16);
+                    ciStack.stackPush((bitLine & 0x0000ff00) >>> 8);
+                    ciStack.stackPush((bitLine & 0x000000ff));
+                    bitLine2 = ci.s32bitAt(index + 4);
+                    ciStack.stackPush((bitLine2 & 0xff000000) >>> 24);
+                    ciStack.stackPush((bitLine2 & 0x00ff0000) >>> 16);
+                    ciStack.stackPush((bitLine2 & 0x0000ff00) >>> 8);
+                    ciStack.stackPush((bitLine2 & 0x000000ff));
+                    break;
+            }
+            if (ciStack.getStackSize()<findSize) {
+                continue;
+            }
+            while (ciStack.getStackSize() > findSize) {
+                int[] removed = ciStack.stackPop();
+            }
+            if (ciStack.getStackSize() != findSize || !Arrays.equals(ciStack.getStack().toArray(), findSimpleI.toArray())){
+                continue;
+            }
+            logger.log(Level.FINE, "Insert index: " + ciStack.getInsertPoint());
+
+            // Match found and insert the replace array at index
+            ci.write(replace.get(), ciStack.getInsertPoint());
+            toReturn = true;
+            break;
+        }
+        return toReturn;
+    }
+
+
+    @SuppressWarnings("unused")
+    static byte[] addConstantPoolReference(ConstPool cp, String javapDesc) {
+        String[] splitDesc1;
+        String[] splitDesc2;
+        String name = "";
+        String descriptor = "";
+        int classConstPoolIndex = Integer.MAX_VALUE;
+        int poolIndex = Integer.MAX_VALUE;
+        byte[] findPoolResult;
+        byte[] byteAddress;
+
+
+        splitDesc1 = javapDesc.split("[ .:]");
+        if (Objects.equals(splitDesc1[1], "String")) {
+            splitDesc2 = javapDesc.split("String ");
+            splitDesc1 = new String[]{"//", "String", splitDesc2[1]};
+        }
+
+        if (splitDesc1.length < 3 || splitDesc1.length > 5)
+            throw new UnsupportedOperationException();
+        if ( (Objects.equals(splitDesc1[1], "Method") || Objects.equals(splitDesc1[1], "Field")) && splitDesc1.length == 3) {
+            throw new UnsupportedOperationException();
+        }
+
+        if ( (Objects.equals(splitDesc1[1], "Method") || Objects.equals(splitDesc1[1], "Field")) && splitDesc1.length == 4) {
+            // The class reference is missing. This happens when a field or method is defined in the same class and javap
+            // assumes the reader is aware. addFieldrefInfo and addMethodrefInfo need specifics not assumptions.
+            try {
+                findPoolResult = findConstantPoolReference(cp, "// class " + cp.getClassName().replaceAll("\\.", "/"));
+                classConstPoolIndex = byteArrayToInt(findPoolResult, 2);
+
+            }catch (UnsupportedOperationException e) {
+                classConstPoolIndex = cp.addClassInfo(cp.getClassName().replaceAll("/", "."));
+            }
+            name = splitDesc1[2];
+            name = name.replaceAll("\"", "");
+            descriptor = splitDesc1[3];
+        }
+        if ( (Objects.equals(splitDesc1[1], "Method") || Objects.equals(splitDesc1[1], "Field")) && splitDesc1.length == 5) {
+            try {
+                findPoolResult = findConstantPoolReference(cp, "// class " + splitDesc1[2].replaceAll("\\.", "/"));
+                classConstPoolIndex = byteArrayToInt(findPoolResult, 2);
+            }catch (UnsupportedOperationException e) {
+                classConstPoolIndex = cp.addClassInfo(splitDesc1[2].replaceAll("/", "."));
+            }
+            name = splitDesc1[3];
+            name = name.replaceAll("\"", "");
+            descriptor = splitDesc1[4];
+        }
+        switch (splitDesc1[1]){
+            case "Method":
+                poolIndex = cp.addMethodrefInfo(classConstPoolIndex, name, descriptor);
+                break;
+            case "Field":
+                poolIndex = cp.addFieldrefInfo(classConstPoolIndex, name, descriptor);
+                break;
+            case "class":
+                try {
+                    findPoolResult = findConstantPoolReference(cp, "// class " + splitDesc1[2].replaceAll("\\.", "/"));
+                    poolIndex = byteArrayToInt(findPoolResult, 2);
+                }catch (UnsupportedOperationException e) {
+                    poolIndex = cp.addClassInfo(splitDesc1[2].replaceAll("/", "."));
+                }
+                break;
+            case "String":
+                poolIndex = cp.addStringInfo(splitDesc1[2]);
+        }
+        if (Objects.equals(poolIndex, EMPTY_INT))
+            throw new UnsupportedOperationException();
+
+        byteAddress = intToByteArray(poolIndex, 2);
+        return byteAddress;
+    }
+
+    /**
+     * This method looks for matches in the constantPool and returns found addresses.
+     *
+     * @param cp is type ConstPool. This object is for accessing a specific ConstPool.
+     * @param javapDesc is a string. This string data is copied directly from javap.exe data dump and represents a description
+     *                  of its explanatory value in the constantPool.
+     * @return byte[] representing the address in the ConstantPool.
+     */
+    static byte[] findConstantPoolReference(ConstPool cp, String javapDesc) {
+        String[] splitDesc1;
+        String[] splitDesc2;
+        String refClass = "";
+        String cpClass;
+        String name = "";
+        String eqResult;
+        String descriptor = "";
+        byte[] byteAddress = null;
+
+
+        splitDesc1 = javapDesc.split("[ .:]");
+        if (Objects.equals(splitDesc1[1], "String")) {
+            splitDesc2 = javapDesc.split("String ");
+            splitDesc1 = new String[]{"//", "String", splitDesc2[1]};
+        }
+        if (Objects.equals(splitDesc1[1], "float")) {
+            splitDesc2 = javapDesc.split("float ");
+            splitDesc1 = new String[]{"//", "float", splitDesc2[1]};
+        }
+
+        if (splitDesc1.length < 3 || splitDesc1.length > 5)
+            throw new UnsupportedOperationException();
+        if ( (Objects.equals(splitDesc1[1], "Method") || Objects.equals(splitDesc1[1], "Field")) && splitDesc1.length == 3) {
+            throw new UnsupportedOperationException();
+        }
+
+        if ( (Objects.equals(splitDesc1[1], "Method") || Objects.equals(splitDesc1[1], "Field") || Objects.equals(splitDesc1[1], "InterfaceMethod"))
+                && splitDesc1.length == 4) {
+            // The class reference is missing. This happens when a field or method is defined in the same class and javap
+            // assumes the reader is aware. ConstPool references still show the class reference even if the lines in methods don't.
+            //classConstPoolIndex = cp.addClassInfo(cp.getClassName().replaceAll("/", "."));
+            refClass = cp.getClassName();
+            refClass = refClass.replace("/", ".");
+            name = splitDesc1[2];
+            name = name.replaceAll("\"", "");
+            descriptor = splitDesc1[3];
+        }
+        if ( (Objects.equals(splitDesc1[1], "Method") || Objects.equals(splitDesc1[1], "Field") || Objects.equals(splitDesc1[1], "InterfaceMethod"))
+                && splitDesc1.length == 5) {
+            //classConstPoolIndex = cp.addClassInfo(splitDesc1[2]);
+            refClass = splitDesc1[2];
+            refClass = refClass.replace("/", ".");
+            name = splitDesc1[3];
+            name = name.replaceAll("\"", "");
+            descriptor = splitDesc1[4];
+        }
+        for (int i = 1; i < cp.getSize(); i++) {
+            try {
+                switch (splitDesc1[1]) {
+                    case "Method":
+                        eqResult = cp.eqMember(name, descriptor, i);
+                        cpClass = cp.getMethodrefClassName(i);
+                        if (eqResult != null && Objects.equals(refClass, cpClass)) {
+                            byteAddress = intToByteArray(i, 2);
+                        }
+                        break;
+                    case "String":
+                        String cpStr = cp.getStringInfo(i);
+                        String refStr = splitDesc1[2];
+                        if (cpStr != null && Objects.equals(cpStr, refStr))
+                            byteAddress = intToByteArray(i, 2);
+                        break;
+                    case "Field":
+                        eqResult = cp.eqMember(name, descriptor, i);
+                        cpClass = cp.getMethodrefClassName(i);
+                        if (eqResult != null && Objects.equals(refClass, cpClass))
+                            byteAddress = intToByteArray(i, 2);
+                        break;
+                    case "class":
+                        refClass = splitDesc1[2];
+                        refClass = refClass.replace("/", ".");
+                        cpClass = cp.getClassInfo(i);
+                        if (cpClass != null && Objects.equals(cpClass, refClass))
+                            byteAddress = intToByteArray(i, 2);
+                        break;
+                    case "long":
+                        long cpLong = cp.getLongInfo(i);
+                        long refLong = Long.parseLong(splitDesc1[2].replace("l", ""), 10);
+                        if (Objects.equals(cpLong, refLong))
+                            byteAddress = intToByteArray(i, 2);
+                        break;
+                    case "float":
+                        float cpFloat = cp.getFloatInfo(i);
+                        float refFloat = Float.parseFloat(splitDesc1[2].replace("f", ""));
+                        if (Objects.equals(cpFloat, refFloat))
+                            byteAddress = intToByteArray(i, 2);
+                        break;
+                    case "InterfaceMethod":
+                        eqResult = cp.eqMember(name, descriptor, i);
+                        cpClass = cp.getInterfaceMethodrefClassName(i);
+                        if (eqResult != null && Objects.equals(refClass, cpClass))
+                            byteAddress = intToByteArray(i,2);
+                        break;
+                }
+            } catch (ClassCastException ignored) {
+                // This method does ConstPool information fetching that throws this exception often, ignore it.
+            }
+            if (byteAddress != null) {
+                break;
+            }
+        }
+        if (byteAddress == null) {
+            throw new UnsupportedOperationException();
+        }
+        return byteAddress;
+    }
+
+    private static byte[] intToByteArray(int value, int byteLength) {
+        switch (byteLength) {
+
+            case 2:
+                return new byte[]{
+                        (byte) (value >>> 8),
+                        (byte) value};
+            case 4:
+                return new byte[]{
+                        (byte) (value >>> 24),
+                        (byte) (value >>> 16),
+                        (byte) (value >>> 8),
+                        (byte) value};
+        }
+        return new byte[0];
+    }
+
+    private static int byteArrayToInt(byte[] b, int byteLength) {
+        switch (byteLength) {
+
+            case 2:
+                return b[1] & 0xFF |
+                        (b[0] & 0xFF) << 8;
+            case 4:
+                return b[3] & 0xFF |
+                        (b[2] & 0xFF) << 8 |
+                        (b[1] & 0xFF) << 16 |
+                        (b[0] & 0xFF) << 24;
+        }
+        return 0;
+    }
+
+    static void printArrayToHex(Object[] obj, String name){
+        int length = obj.length;
+        int[] c = new int[length];
+        for (int i=0;i<length;i++){
+            c[i]=(int)obj[i];
+        }
+        String[] a = new String[length];
+        for (int i=0;i<length;i++){
+            a[i]=String.format("%02X", c[i] & 0xff);
+        }
+        logger.log(Level.INFO,name + " : " + Arrays.toString(a));
+    }
+
+    private static class CIStack {
+        private LinkedList<Integer> stack;
+        private LinkedList<Integer> listPositions;
+        private LinkedList<Integer> byteIndexes;
+        @SuppressWarnings({"FieldCanBeLocal"})
+        private int maxSize;
+        private int stackSize = 0;
+
+        CIStack(int aSize){
+            stack = new LinkedList<>();
+            listPositions = new LinkedList<>();
+            byteIndexes = new LinkedList<>();
+            maxSize = aSize;
+        }
+
+        void stackPush(int i){
+            stack.add(i);
+            stackSize++;
+        }
+
+        void indexPush(int i){
+            listPositions.add(stackSize);
+            // Actual last index in stack is stackSize - 1. We need index for the next value to be added.
+            byteIndexes.add(i);
+        }
+
+        int[] stackPop(){
+            int removeAllUpTo = IndexPop();
+            removeAllUpTo--; // returns the next position after what was removed. pop 0 and return the new 0.
+            // . We want to remove all up to the new value in 0.
+            int[] removed = new int[removeAllUpTo+1]; // +1 because of 0-based arrays.
+            for (int i=0;i<=removeAllUpTo;i++){
+                removed[i] = stack.remove(0);
+                stackSize--;
+            }
+            return removed;
+        }
+
+        private int IndexPop(){
+            byteIndexes.removeFirst();
+            int removed = listPositions.removeFirst();
+            int nextPosition = listPositions.peekFirst();
+            int size = listPositions.size();
+            for (int i=0;i<size;i++){
+                listPositions.set(i, listPositions.get(i)-nextPosition);
+            }
+            return nextPosition;
+        }
+
+        int getStackSize(){
+            return stackSize;
+        }
+
+        LinkedList<Integer> getStack(){
+            return stack;
+        }
+
+        int getInsertPoint(){
+            return byteIndexes.peekFirst();
+        }
+
+        LinkedList<Integer> getListPositions(){
+            return listPositions;
+        }
+
+        LinkedList<Integer> getByteIndexes(){
+            return byteIndexes;
+        }
+    }
+}
