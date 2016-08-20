@@ -6,6 +6,11 @@ import javassist.NotFoundException;
 import javassist.bytecode.ClassFile;
 import javassist.bytecode.ConstPool;
 
+import java.io.FileNotFoundException;
+import java.io.PrintWriter;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+
 @SuppressWarnings("unused")
 class JAssistClassData {
 
@@ -29,5 +34,12 @@ class JAssistClassData {
 
     ConstPool getConstPool() {
         return constPool;
+    }
+
+    public void constantPoolPrint(String destinationPath) throws FileNotFoundException {
+        Path printPath = Paths.get(destinationPath);
+        PrintWriter out = new PrintWriter(printPath.toFile());
+        constPool.print(out);
+        out.close();
     }
 }

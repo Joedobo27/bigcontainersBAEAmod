@@ -87,4 +87,5 @@ class JAssistMethodData {
         }
         return Arrays.hashCode(code);
     }
+
 }

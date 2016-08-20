@@ -1,15 +1,18 @@
 package com.Joedobo27.bigcontainers;
 
-import javassist.bytecode.BadBytecode;
-import javassist.bytecode.Bytecode;
-import javassist.bytecode.CodeIterator;
-import javassist.bytecode.ConstPool;
+import javassist.bytecode.*;
 
+import java.io.FileNotFoundException;
+import java.io.PrintWriter;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.IntStream;
 
 @SuppressWarnings("unused")
 class BytecodeTools {
@@ -17,103 +20,53 @@ class BytecodeTools {
     private static final Logger logger = Logger.getLogger(BytecodeTools.class.getName());
     private static final int EMPTY_INT = Integer.MAX_VALUE;
 
+
     static boolean findReplaceCodeIterator(CodeIterator ci, Bytecode find, Bytecode replace) throws BadBytecode {
 
         boolean toReturn = false;
-        byte[] findSimpleB = find.get();
-        LinkedList<Integer> findSimpleI = new LinkedList<>();
-        for (byte aFindSimpleB : findSimpleB) {
-            findSimpleI.add(Byte.toUnsignedInt(aFindSimpleB));
-        }
-        //noinspection UnusedAssignment
-        findSimpleB = null; // void out unused.
+        final byte[] findBytes = find.get();
+        LinkedList<Integer> findInts = new LinkedList<>();
+        IntStream.range(0, findBytes.length)
+                .forEach(value -> findInts.add(Byte.toUnsignedInt(findBytes[value])));
+        logger.log(Level.FINE, "findInts: " + findInts.toString());
+
+        final byte[] replaceBytes = replace.get();
+        ArrayList<Integer> replaceInts = new ArrayList<>(replaceBytes.length);
+        IntStream.range(0, replaceBytes.length)
+                .forEach(value -> replaceInts.add(Byte.toUnsignedInt(replaceBytes[value])));
+        logger.log(Level.FINE, "replaceInts: " + replaceInts.toString());
 
         int index;
         int bitLine;
         int bitLine2;
-        int findSize = findSimpleI.size();
+        int findSize = findInts.size();
+        logger.log(Level.FINE, "findSize: " + Integer.toString(findSize));
         CIStack ciStack = new CIStack(findSize);
 
         ci.begin();
         while (ci.hasNext()) {
             index = ci.next();
             ciStack.indexPush(index);
-            switch (ci.lookAhead() - index){
-                case 1:
-                    ciStack.stackPush(ci.byteAt(index));
-                    break;
-                case 2:
-                    bitLine = ci.s16bitAt(index);
-                    ciStack.stackPush((bitLine & 0xff00) >>> 8);
-                    ciStack.stackPush(bitLine & 0x00ff);
-                    break;
-                case 3:
-                    bitLine = ci.s32bitAt(index);
-                    ciStack.stackPush((bitLine & 0xff000000) >>> 24);
-                    ciStack.stackPush((bitLine & 0x00ff0000) >>> 16);
-                    ciStack.stackPush((bitLine & 0x0000ff00) >>> 8);
-                    // not using the last byte
-                    break;
-                case 4:
-                    bitLine = ci.s32bitAt(index);
-                    ciStack.stackPush((bitLine & 0xff000000) >>> 24);
-                    ciStack.stackPush((bitLine & 0x00ff0000) >>> 16);
-                    ciStack.stackPush((bitLine & 0x0000ff00) >>> 8);
-                    ciStack.stackPush((bitLine & 0x000000ff));
-                    break;
-                case 5:
-                    bitLine = ci.s32bitAt(index);
-                    ciStack.stackPush((bitLine & 0xff000000) >>> 24);
-                    ciStack.stackPush((bitLine & 0x00ff0000) >>> 16);
-                    ciStack.stackPush((bitLine & 0x0000ff00) >>> 8);
-                    ciStack.stackPush((bitLine & 0x000000ff));
-                    bitLine2 = ci.byteAt(index + 4);
-                    ciStack.stackPush(bitLine2);
-                    break;
-                case 6:
-                    bitLine = ci.s32bitAt(index);
-                    ciStack.stackPush((bitLine & 0xff000000) >>> 24);
-                    ciStack.stackPush((bitLine & 0x00ff0000) >>> 16);
-                    ciStack.stackPush((bitLine & 0x0000ff00) >>> 8);
-                    ciStack.stackPush((bitLine & 0x000000ff));
-                    bitLine2 = ci.s16bitAt(index + 4);
-                    ciStack.stackPush((bitLine2 & 0xff00) >>> 8);
-                    ciStack.stackPush((bitLine2 & 0x00ff));
-                    break;
-                case 7:
-                    bitLine = ci.s32bitAt(index);
-                    ciStack.stackPush((bitLine & 0xff000000) >>> 24);
-                    ciStack.stackPush((bitLine & 0x00ff0000) >>> 16);
-                    ciStack.stackPush((bitLine & 0x0000ff00) >>> 8);
-                    ciStack.stackPush((bitLine & 0x000000ff));
-                    bitLine2 = ci.s32bitAt(index + 4);
-                    ciStack.stackPush((bitLine2 & 0xff000000) >>> 24);
-                    ciStack.stackPush((bitLine2 & 0x00ff0000) >>> 16);
-                    ciStack.stackPush((bitLine2 & 0x0000ff00) >>> 8);
-                    // not using the last byte
-                    break;
-                case 8:
-                    bitLine = ci.s32bitAt(index);
-                    ciStack.stackPush((bitLine & 0xff000000) >>> 24);
-                    ciStack.stackPush((bitLine & 0x00ff0000) >>> 16);
-                    ciStack.stackPush((bitLine & 0x0000ff00) >>> 8);
-                    ciStack.stackPush((bitLine & 0x000000ff));
-                    bitLine2 = ci.s32bitAt(index + 4);
-                    ciStack.stackPush((bitLine2 & 0xff000000) >>> 24);
-                    ciStack.stackPush((bitLine2 & 0x00ff0000) >>> 16);
-                    ciStack.stackPush((bitLine2 & 0x0000ff00) >>> 8);
-                    ciStack.stackPush((bitLine2 & 0x000000ff));
-                    break;
-            }
+
+            int[] instruction = getInstruction(ci.lookAhead() - index, index, ci);
+            Arrays.stream(instruction).forEach(ciStack::stackPush);
             if (ciStack.getStackSize()<findSize) {
                 continue;
             }
             while (ciStack.getStackSize() > findSize) {
                 int[] removed = ciStack.stackPop();
             }
-            if (ciStack.getStackSize() != findSize || !Arrays.equals(ciStack.getStack().toArray(), findSimpleI.toArray())){
+            boolean stackSizeUnalikeFind = ciStack.getStackSize() != findSize;
+            if (stackSizeUnalikeFind)
                 continue;
+            boolean stackContentEqualsReplace = Arrays.equals(ciStack.getStack().toArray(), replaceInts.toArray());
+            if (stackContentEqualsReplace){
+                toReturn = true;
+                break;
             }
+            boolean stackContentUnalikeFind = !Arrays.equals(ciStack.getStack().toArray(), findInts.toArray());
+            if (stackContentUnalikeFind)
+                continue;
             logger.log(Level.FINE, "Insert index: " + ciStack.getInsertPoint());
 
             // Match found and insert the replace array at index
@@ -177,6 +130,9 @@ class BytecodeTools {
         switch (splitDesc1[1]){
             case "Method":
                 poolIndex = cp.addMethodrefInfo(classConstPoolIndex, name, descriptor);
+                //logger.log(Level.FINE, "bytecode class index: " + Integer.toString(classConstPoolIndex));
+                //logger.log(Level.FINE, "bytecode name: " + name);
+                //logger.log(Level.FINE, "bytecode descriptor: " + descriptor);
                 break;
             case "Field":
                 poolIndex = cp.addFieldrefInfo(classConstPoolIndex, name, descriptor);
@@ -272,7 +228,7 @@ class BytecodeTools {
                         break;
                     case "Field":
                         eqResult = cp.eqMember(name, descriptor, i);
-                        cpClass = cp.getMethodrefClassName(i);
+                        cpClass = cp.getFieldrefClassName(i);
                         if (eqResult != null && Objects.equals(refClass, cpClass))
                             byteAddress = intToByteArray(i, 2);
                         break;
@@ -345,6 +301,122 @@ class BytecodeTools {
                         (b[0] & 0xFF) << 24;
         }
         return 0;
+    }
+
+    private static int[] getInstruction(int size, int index, CodeIterator codeIterator) {
+        int[] toReturn = null;
+        int bitLine;
+        int bitLine2;
+        switch (size) {
+            case 1:
+                bitLine = codeIterator.byteAt(index);
+                toReturn = new int[]{
+                        bitLine
+                };
+                break;
+            case 2:
+                bitLine = codeIterator.s16bitAt(index);
+                toReturn = new int[]{
+                        (bitLine & 0xff00) >>> 8,
+                        bitLine & 0x00ff
+                };
+                break;
+            case 3:
+                bitLine = codeIterator.s32bitAt(index);
+                toReturn = new int[]{
+                        (bitLine & 0xff000000) >>> 24,
+                        (bitLine & 0x00ff0000) >>> 16,
+                        (bitLine & 0x0000ff00) >>> 8
+                        // not using the last byte
+                };
+                break;
+            case 4:
+                bitLine = codeIterator.s32bitAt(index);
+                toReturn = new int[]{
+                        (bitLine & 0xff000000) >>> 24,
+                        (bitLine & 0x00ff0000) >>> 16,
+                        (bitLine & 0x0000ff00) >>> 8,
+                        (bitLine & 0x000000ff)
+                };
+                break;
+            case 5:
+                bitLine = codeIterator.s32bitAt(index);
+                bitLine2 = codeIterator.byteAt(index + 4);
+                toReturn = new int[]{
+                        (bitLine & 0xff000000) >>> 24,
+                        (bitLine & 0x00ff0000) >>> 16,
+                        (bitLine & 0x0000ff00) >>> 8,
+                        (bitLine & 0x000000ff),
+                        bitLine2
+                };
+                break;
+            case 6:
+                bitLine = codeIterator.s32bitAt(index);
+                bitLine2 = codeIterator.s16bitAt(index + 4);
+                toReturn = new int[]{
+                        (bitLine & 0xff000000) >>> 24,
+                        (bitLine & 0x00ff0000) >>> 16,
+                        (bitLine & 0x0000ff00) >>> 8,
+                        (bitLine & 0x000000ff),
+                        (bitLine2 & 0xff00) >>> 8,
+                        (bitLine2 & 0x00ff)
+                };
+                break;
+            case 7:
+                bitLine = codeIterator.s32bitAt(index);
+                bitLine2 = codeIterator.s32bitAt(index + 4);
+                toReturn = new int[]{
+                        (bitLine & 0xff000000) >>> 24,
+                        (bitLine & 0x00ff0000) >>> 16,
+                        (bitLine & 0x0000ff00) >>> 8,
+                        (bitLine & 0x000000ff),
+                        (bitLine2 & 0xff000000) >>> 24,
+                        (bitLine2 & 0x00ff0000) >>> 16,
+                        (bitLine2 & 0x0000ff00) >>> 8
+                        // not using the last byte
+                };
+                break;
+            case 8:
+                bitLine = codeIterator.s32bitAt(index);
+                bitLine2 = codeIterator.s32bitAt(index + 4);
+                toReturn = new int[]{
+                        (bitLine & 0xff000000) >>> 24,
+                        (bitLine & 0x00ff0000) >>> 16,
+                        (bitLine & 0x0000ff00) >>> 8,
+                        (bitLine & 0x000000ff),
+                        (bitLine2 & 0xff000000) >>> 24,
+                        (bitLine2 & 0x00ff0000) >>> 16,
+                        (bitLine2 & 0x0000ff00) >>> 8,
+                        (bitLine2 & 0x000000ff)
+                };
+                break;
+        }
+        return toReturn;
+    }
+
+    public static void byteCodePrint(String destinationPath, CodeIterator codeIterator) throws FileNotFoundException, BadBytecode {
+        Path printPath = Paths.get(destinationPath);
+        PrintWriter out = new PrintWriter(printPath.toFile());
+        final String[] instructionOut = {""};
+        codeIterator.begin();
+        while (codeIterator.hasNext()) {
+            int index = codeIterator.next();
+            int[] instruction = getInstruction(codeIterator.lookAhead() - index, index, codeIterator);
+            instructionOut[0] += Integer.toString(index);
+            instructionOut[0] += " ";
+            instructionOut[0] += Mnemonic.OPCODE[instruction[0]];
+            if (instruction.length > 1) {
+                instructionOut[0] += " ";
+                IntStream.range(1, instruction.length)
+                        .forEach(value -> {
+                            instructionOut[0] += Integer.toString(instruction[value]);
+                            instructionOut[0] += " ";
+                        });
+            }
+            out.println(instructionOut[0]);
+            instructionOut[0] = "";
+        }
+        out.close();
     }
 
     static void printArrayToHex(Object[] obj, String name){

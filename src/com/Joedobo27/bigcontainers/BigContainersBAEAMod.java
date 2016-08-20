@@ -1,5 +1,6 @@
 package com.Joedobo27.bigcontainers;
 
+import com.Joedobo27.common.Common;
 import com.wurmonline.server.items.*;
 import javassist.*;
 import javassist.bytecode.BadBytecode;
@@ -11,6 +12,7 @@ import org.gotti.wurmunlimited.modloader.ReflectionUtil;
 import org.gotti.wurmunlimited.modloader.classhooks.HookManager;
 import org.gotti.wurmunlimited.modloader.interfaces.*;
 
+import java.io.FileNotFoundException;
 import java.lang.reflect.Field;
 import java.util.*;
 import java.util.logging.Level;
@@ -69,7 +71,7 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
 
             makeItemsCombineBytecode();
             unlimitedSpaceBytecode();
-        } catch (NotFoundException | CannotCompileException | BadBytecode e) {
+        } catch (NotFoundException | FileNotFoundException |CannotCompileException | BadBytecode e) {
             logger.log(Level.WARNING, e.toString(), e);
         }
     }
@@ -102,55 +104,70 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         }
     }
 
-    private static void makeItemsCombineBytecode() throws CannotCompileException, NotFoundException, BadBytecode {
+    private static void makeItemsCombineBytecode() throws CannotCompileException, FileNotFoundException, NotFoundException, BadBytecode {
         if (!makeItemsCombine)
             return;
 
         // In CreationEntry.checkSaneAmounts()
         // Byte code change: this.objectCreated != 73 to this.getObjectCreated() == 73
         // Do this because it's not possible to instrument on a field and have the replace function use a returned value from a hook method.
-        byte[] findPoolResult;
-        Bytecode find = new Bytecode(creationEntry.getConstPool());
-        find.addOpcode(Opcode.ALOAD_0);
-        find.addOpcode(Opcode.GETFIELD);
-        findPoolResult = findConstantPoolReference(creationEntry.getConstPool(), "// Field objectCreated:I");
-        find.add(findPoolResult[0], findPoolResult[1]);
-        find.addOpcode(Opcode.BIPUSH);
-        find.add(73);
-
-        Bytecode replace = new Bytecode(creationEntry.getConstPool());
-        replace.addOpcode(Opcode.ALOAD_0);
-        replace.addOpcode(Opcode.INVOKEVIRTUAL);
-        findPoolResult = addConstantPoolReference(creationEntry.getConstPool(), "// Method com/wurmonline/server/items/CreationEntry.getObjectCreated:()I");
-        replace.add(findPoolResult[0], findPoolResult[1]);
-        replace.addOpcode(Opcode.BIPUSH);
-        replace.add(73);
-
         JAssistMethodData checkSaneAmounts = new JAssistMethodData(creationEntry,
                 "(Lcom/wurmonline/server/items/Item;ILcom/wurmonline/server/items/Item;ILcom/wurmonline/server/items/ItemTemplate;Lcom/wurmonline/server/creatures/Creature;Z)V",
                 "checkSaneAmounts");
-        findReplaceCodeIterator(checkSaneAmounts.getCodeIterator(), find, replace);
 
+        int[] makeItemsCombineSuccesses = new int[2];
+        Arrays.fill(makeItemsCombineSuccesses, 0);
 
-        int[] successes = new int[1];
-        Arrays.fill(successes, 0);
-        checkSaneAmounts.getCtMethod().instrument(new ExprEditor() {
-            @Override
-            public void edit(MethodCall methodCall) throws CannotCompileException {
-                if (Objects.equals("getObjectCreated", methodCall.getMethodName())){
-                    methodCall.replace("$_ = com.Joedobo27.bigcontainers.BigContainersBAEAMod.checkSaneAmountsExceptionsHook( $0.getObjectCreated(), sourceMax, targetMax);");
-                    logger.log(Level.FINE, "CreationEntry.class, checkSaneAmounts(), installed hook at line: " + methodCall.getLineNumber());
-                    successes[0] = 1;
+        boolean isModifiedCheckSaneAmounts = true;
+        byte[] findPoolResult;
+        try {
+            findPoolResult = findConstantPoolReference(creationEntry.getConstPool(),
+                    "// Method com/Joedobo27/common/Common.checkSaneAmountsExceptionsHook:(III)I");
+        } catch (UnsupportedOperationException e){
+            isModifiedCheckSaneAmounts = false;
+        }
+
+        if (isModifiedCheckSaneAmounts)
+            Arrays.fill(makeItemsCombineSuccesses, 1);
+        if (!isModifiedCheckSaneAmounts) {
+            Bytecode find = new Bytecode(creationEntry.getConstPool());
+            find.addOpcode(Opcode.ALOAD_0);
+            find.addOpcode(Opcode.GETFIELD);
+            findPoolResult = findConstantPoolReference(creationEntry.getConstPool(), "// Field objectCreated:I");
+            find.add(findPoolResult[0], findPoolResult[1]);
+            find.addOpcode(Opcode.BIPUSH);
+            find.add(73);
+
+            Bytecode replace = new Bytecode(creationEntry.getConstPool());
+            replace.addOpcode(Opcode.ALOAD_0);
+            replace.addOpcode(Opcode.INVOKEVIRTUAL);
+            findPoolResult = addConstantPoolReference(creationEntry.getConstPool(), "// Method com/wurmonline/server/items/CreationEntry.getObjectCreated:()I");
+            replace.add(findPoolResult[0], findPoolResult[1]);
+            replace.addOpcode(Opcode.BIPUSH);
+            replace.add(73);
+
+            boolean replaceResult = findReplaceCodeIterator(checkSaneAmounts.getCodeIterator(), find, replace);
+            makeItemsCombineSuccesses[0] = replaceResult ? 1 : 0;
+            logger.log(Level.FINE, "checkSaneAmounts find and replace: " + Boolean.toString(replaceResult));
+
+            checkSaneAmounts.getCtMethod().instrument(new ExprEditor() {
+                @Override
+                public void edit(MethodCall methodCall) throws CannotCompileException {
+                    if (Objects.equals("getObjectCreated", methodCall.getMethodName())) {
+                        methodCall.replace("$_ = com.Joedobo27.common.Common.checkSaneAmountsExceptionsHook( $0.getObjectCreated(), sourceMax, targetMax);");
+                        logger.log(Level.FINE, "CreationEntry.class, checkSaneAmounts(), installed hook at line: " + methodCall.getLineNumber());
+                        makeItemsCombineSuccesses[1] = 1;
+                    }
                 }
-            }
-        });
+            });
+        }
 
-        boolean changesSuccessful = !Arrays.stream(successes).anyMatch(value -> value == 0);
+        boolean changesSuccessful = !Arrays.stream(makeItemsCombineSuccesses).anyMatch(value -> value == 0);
         if (changesSuccessful) {
             logger.log(Level.INFO, "makeItemsCombine option changes SUCCESSFUL");
         } else {
             logger.log(Level.INFO, "makeItemsCombine option changes FAILURE");
-            logger.log(Level.FINE, Arrays.toString(successes));
+            logger.log(Level.FINE, Arrays.toString(makeItemsCombineSuccesses));
         }
     }
 
@@ -386,6 +403,10 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         int makeItemsCombineCount = 0;
         if (!makeItemsCombine)
             return makeItemsCombineCount;
+        int[] exceptions = {ItemList.woad, ItemList.dyeBlue, ItemList.acorn, ItemList.tannin,
+                ItemList.cochineal, ItemList.dyeRed, ItemList.dye, ItemList.lye};
+        Common.addExceptions(exceptions);
+
         Map<Integer, ItemTemplate> fieldTemplates = ReflectionUtil.getPrivateField(
                 ItemTemplateFactory.class, ReflectionUtil.getField(ItemTemplateFactory.class, "templates"));
         Field fieldCombine = ReflectionUtil.getField(ItemTemplate.class, "combine");
@@ -397,25 +418,6 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
             }
         }
         return makeItemsCombineCount;
-    }
-
-    /**
-     * Returning 73 serves as a way to disable certain code. This method is used as a expression editor hook to replace
-     * the returned value of this.objectCreated.
-     * if (template.isCombine() && this.objectCreated != 73) {
-     *
-     * @param check int value, which is an entry from ItemList.
-     * @return return an int.
-     */
-    public static int checkSaneAmountsExceptionsHook(int check, int sourceMax, int targetMax){
-        int[] exceptions = {ItemList.woad, ItemList.dyeBlue, ItemList.acorn, ItemList.tannin,
-                ItemList.cochineal, ItemList.dyeRed, ItemList.dye, ItemList.lye};
-        boolean isLargeSizeDifferential = Arrays.stream(exceptions).anyMatch(value -> check == value);
-        if (isLargeSizeDifferential) {
-            return 73;
-        }else{
-            return check;
-        }
     }
 
     private static int removeInsideOutsideLimitsReflection() throws NoSuchFieldException, IllegalAccessException {
