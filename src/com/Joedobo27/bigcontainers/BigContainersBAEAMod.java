@@ -14,6 +14,8 @@ import org.gotti.wurmunlimited.modloader.interfaces.*;
 
 import java.io.FileNotFoundException;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -23,7 +25,6 @@ import static com.Joedobo27.bigcontainers.BytecodeTools.findConstantPoolReferenc
 import static com.Joedobo27.bigcontainers.BytecodeTools.findReplaceCodeIterator;
 
 
-@SuppressWarnings({"UnusedAssignment", "unused"})
 public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStartedListener, Configurable {
 
     private static boolean makeContainersBig = false;
@@ -39,9 +40,8 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
     private static JAssistClassData creationEntry;
     private static JAssistClassData itemClass;
     private static JAssistClassData cargoTransportationMethods;
-    private static JAssistClassData terraforming;
 
-    private static ClassPool pool;
+    private static ClassPool classPool;
 
     private static Logger logger = Logger.getLogger(BigContainersBAEAMod.class.getName());
 
@@ -61,13 +61,12 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
     }
 
     @Override
-    public void init() {
+    public void init()   {
         try {
-            pool = HookManager.getInstance().getClassPool();
-            creationEntry = new JAssistClassData("com.wurmonline.server.items.CreationEntry", pool);
-            itemClass = new JAssistClassData("com.wurmonline.server.items.Item", pool);
-            cargoTransportationMethods = new JAssistClassData("com.wurmonline.server.behaviours.CargoTransportationMethods", pool);
-            terraforming = new JAssistClassData("com.wurmonline.server.behaviours.Terraforming", pool);
+            classPool = HookManager.getInstance().getClassPool();
+            creationEntry = new JAssistClassData("com.wurmonline.server.items.CreationEntry", classPool);
+            itemClass = new JAssistClassData("com.wurmonline.server.items.Item", classPool);
+            cargoTransportationMethods = new JAssistClassData("com.wurmonline.server.behaviours.CargoTransportationMethods", classPool);
 
             makeItemsCombineBytecode();
             unlimitedSpaceBytecode();
@@ -121,7 +120,7 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         boolean isModifiedCheckSaneAmounts = true;
         byte[] findPoolResult;
         try {
-            findPoolResult = findConstantPoolReference(creationEntry.getConstPool(),
+            findConstantPoolReference(creationEntry.getConstPool(),
                     "// Method com/Joedobo27/common/Common.checkSaneAmountsExceptionsHook:(III)I");
         } catch (UnsupportedOperationException e){
             isModifiedCheckSaneAmounts = false;
@@ -161,66 +160,45 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
                 }
             });
         }
-
-        boolean changesSuccessful = !Arrays.stream(makeItemsCombineSuccesses).anyMatch(value -> value == 0);
-        if (changesSuccessful) {
-            logger.log(Level.INFO, "makeItemsCombine option changes SUCCESSFUL");
-        } else {
-            logger.log(Level.INFO, "makeItemsCombine option changes FAILURE");
-            logger.log(Level.FINE, Arrays.toString(makeItemsCombineSuccesses));
-        }
+        evaluateChangesArray(makeItemsCombineSuccesses, "makeItemsCombine");
     }
-
 
     private static void unlimitedSpaceBytecode() throws NotFoundException, CannotCompileException{
         if (!unlimitedSpace)
             return;
 
-        int[] successes = new int[16];
+        int[] successes = new int[14];
         Arrays.fill(successes, 0);
 
         // Alter Item.hasSpaceFor() so it always returns true.
         itemClass.getCtClass().getMethod("hasSpaceFor", "(I)Z").setBody("return true;");
 
         // Alter CargoTransportationMethods.targetCanNotBeInsertedCheck() so the volume and x,y,z measurements return max int.
-        CtMethod ctmTargetCanNotBeInsertedCheck = cargoTransportationMethods.getCtClass().getDeclaredMethod("targetCanNotBeInsertedCheck");
+        JAssistMethodData targetCanNotBeInsertedCheck = new JAssistMethodData(cargoTransportationMethods,
+                "(Lcom/wurmonline/server/items/Item;Lcom/wurmonline/server/items/Item;Lcom/wurmonline/server/behaviours/Vehicle;Lcom/wurmonline/server/creatures/Creature;)Z",
+                "targetCanNotBeInsertedCheck");
+        String methodName = targetCanNotBeInsertedCheck.getCtMethod().getName();
 
-
-        ctmTargetCanNotBeInsertedCheck.instrument(new ExprEditor() {
+        targetCanNotBeInsertedCheck.getCtMethod().instrument(new ExprEditor() {
             @Override
             public void edit(MethodCall methodCall) throws CannotCompileException {
-                if (Objects.equals("getFreeVolume", methodCall.getMethodName())){
+                if (Objects.equals("getContainerSizeX", methodCall.getMethodName())){
+                    logger.log(Level.FINE, methodName + " method,  edit call call to " +
+                            methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                    logger.log(Level.FINE, "targetCanNotBeInsertedCheck v: " + methodCall.getLineNumber());
                     successes[0] = 1;
-
-                }
-                else if (Objects.equals("getContainerSizeX", methodCall.getMethodName())){
-                    methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                    logger.log(Level.FINE, "targetCanNotBeInsertedCheck x: " + methodCall.getLineNumber());
-                    successes[1] = 1;
                 }
                 else if (Objects.equals("getContainerSizeY", methodCall.getMethodName())){
+                    logger.log(Level.FINE, methodName + " method,  edit call call to " +
+                            methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                    logger.log(Level.FINE, "targetCanNotBeInsertedCheck y: " + methodCall.getLineNumber());
-                    successes[2] = 1;
+                    successes[1] = 1;
                 }
                 else if (Objects.equals("getContainerSizeZ", methodCall.getMethodName())){
+                    logger.log(Level.FINE, methodName + " method,  edit call call to " +
+                            methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                    logger.log(Level.FINE, "targetCanNotBeInsertedCheck z: " + methodCall.getLineNumber());
-                    successes[3] = 1;
-                }
-            }
-        });
-
-        CtMethod ctmDig = terraforming.getCtClass().getDeclaredMethod("dig");
-        ctmDig.instrument(new ExprEditor() {
-            @Override
-            public void edit(MethodCall methodCall) throws CannotCompileException {
-                if (Objects.equals("getFreeVolume", methodCall.getMethodName())){
-                    methodCall.replace("$_ = 1001;");
-                    logger.log(Level.FINE, "dig v: " + methodCall.getLineNumber());
-                    successes[4] = 1;
+                    successes[2] = 1;
                 }
             }
         });
@@ -230,25 +208,23 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         ctmInsertItem.instrument(new ExprEditor() {
             @Override
             public void edit(MethodCall methodCall) throws CannotCompileException {
-                if (Objects.equals("getFreeVolume", methodCall.getMethodName())){
-                    methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;;");
-                    logger.log(Level.FINE, "insertItem v: " + methodCall.getLineNumber());
-                    successes[5] = 1;
-                }
-                else if (Objects.equals("getContainerSizeX", methodCall.getMethodName())){
+                if (Objects.equals("getContainerSizeX", methodCall.getMethodName())){
+                    logger.log(Level.FINE, targetCanNotBeInsertedCheck.getCtMethod().getName() + " method,  edit call call to " +
+                            methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                    logger.log(Level.FINE, "insertItem x: " + methodCall.getLineNumber());
-                    successes[6] = 1;
+                    successes[3] = 1;
                 }
                 else if (Objects.equals("getContainerSizeY", methodCall.getMethodName())){
+                    logger.log(Level.FINE, targetCanNotBeInsertedCheck.getCtMethod().getName() + " method,  edit call call to " +
+                            methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                    logger.log(Level.FINE, "insertItem y: " + methodCall.getLineNumber());
-                    successes[7] = 1;
+                    successes[4] = 1;
                 }
                 else if (Objects.equals("getContainerSizeZ", methodCall.getMethodName())){
+                    logger.log(Level.FINE, targetCanNotBeInsertedCheck.getCtMethod().getName() + " method,  edit call call to " +
+                            methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                    logger.log(Level.FINE, "insertItem z: " + methodCall.getLineNumber());
-                    successes[8] = 1;
+                    successes[5] = 1;
                 }
             }
         });
@@ -256,66 +232,97 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         // About 2780 in bytecode
         // Alter Item.moveToItem() so all the x,y,z size fetching methods all return max int.
         // note that changing the return value will alter indexOfBytecode() results for things afterwards. It may not match javap.exe.
-        CtMethod ctmMoveToItem = itemClass.getCtClass().getMethod("moveToItem", "(Lcom/wurmonline/server/creatures/Creature;JZ)Z");
-        ctmMoveToItem.instrument(new ExprEditor() {
+
+        JAssistMethodData moveToItem = new JAssistMethodData(itemClass,
+                "(Lcom/wurmonline/server/creatures/Creature;JZ)Z", "moveToItem");
+        moveToItem.getCtMethod().instrument(new ExprEditor() {
             @Override
             public void edit(MethodCall methodCall) throws CannotCompileException {
                 if (Objects.equals("getSizeX", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 2780){
+                    logger.log(Level.FINE, moveToItem.getCtMethod().getName() + " method,  edit call call to " +
+                            methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                    logger.log(Level.FINE, "moveToItem x: " + methodCall.getLineNumber());
-                    successes[9] = 1;
+                    successes[6] = 1;
                 }
                 else if (Objects.equals("getSizeY", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 2801){
+                    logger.log(Level.FINE, moveToItem.getCtMethod().getName() + " method,  edit call call to " +
+                            methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                    logger.log(Level.FINE, "moveToItem y: " + methodCall.getLineNumber());
-                    successes[10] = 1;
+                    successes[7] = 1;
                 }
                 else if (Objects.equals("getSizeZ", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 2822) {
+                    logger.log(Level.FINE, moveToItem.getCtMethod().getName() + " method,  edit call call to " +
+                            methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                    logger.log(Level.FINE, "moveToItem z: " + methodCall.getLineNumber());
-                    successes[11] = 1;
+                    successes[8] = 1;
                 }
-                //else if (Objects.equals("testInsertItem", methodCall.getClassName())){
-                //    methodCall.replace("$_ = true;");
-                //    logger.log(Level.FINE, "moveToItem testInsertItem: " + methodCall.getLineNumber());
-                //}
             }
         });
 
         //Alter Item.testInsertHollowItem() so volume and measurements return max int.
-        CtMethod ctmTestInsertHollowItem = itemClass.getCtClass().getDeclaredMethod("testInsertHollowItem");
-        ctmTestInsertHollowItem.instrument(new ExprEditor() {
+        JAssistMethodData testInsertHollowItem = new JAssistMethodData(itemClass,
+                "(Lcom/wurmonline/server/items/Item;Z)Z", "testInsertHollowItem");
+        testInsertHollowItem.getCtMethod().instrument(new ExprEditor() {
            @Override
             public void edit(MethodCall methodCall) throws CannotCompileException {
-                if (Objects.equals("getFreeVolume", methodCall.getMethodName())){
+                if (Objects.equals("getContainerSizeX", methodCall.getMethodName())){
+                    logger.log(Level.FINE, testInsertHollowItem.getCtMethod().getName() + " method,  edit call call to " +
+                            methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                    logger.log(Level.FINE, "testInsertHollowItem v: " + methodCall.getLineNumber());
-                    successes[12] = 1;
-                }
-                else if (Objects.equals("getContainerSizeX", methodCall.getMethodName())){
-                    methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                    logger.log(Level.FINE, "testInsertHollowItem x: " + methodCall.getLineNumber());
-                    successes[13] = 1;
+                    successes[9] = 1;
                 }
                 else if (Objects.equals("getContainerSizeY", methodCall.getMethodName())){
+                    logger.log(Level.FINE, testInsertHollowItem.getCtMethod().getName() + " method,  edit call call to " +
+                            methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                    logger.log(Level.FINE, "testInsertHollowItem y: " + methodCall.getLineNumber());
-                    successes[14] = 1;
+                    successes[10] = 1;
                 }
                 else if (Objects.equals("getContainerSizeZ", methodCall.getMethodName())){
+                    logger.log(Level.FINE, testInsertHollowItem.getCtMethod().getName() + " method,  edit call call to " +
+                            methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                    logger.log(Level.FINE, "testInsertHollowItem z: " + methodCall.getLineNumber());
-                    successes[15] = 1;
+                    successes[11] = 1;
                 }
             }
         });
-        boolean changesSuccessful = !Arrays.stream(successes).anyMatch(value -> value == 0);
-        if (changesSuccessful) {
-            logger.log(Level.INFO, "unlimitedSpace option changes SUCCESSFUL");
-        } else {
-            logger.log(Level.INFO, "unlimitedSpace option changes FAILURE");
-            logger.log(Level.FINE, Arrays.toString(successes));
-        }
+
+        JAssistClassData MethodsItems = new JAssistClassData("com.wurmonline.server.behaviours.MethodsItems", classPool);
+        JAssistMethodData fillContainer1 = new JAssistMethodData(MethodsItems,
+                "(Lcom/wurmonline/server/items/Item;Lcom/wurmonline/server/creatures/Creature;)V",
+                "fillContainer");
+        JAssistMethodData fillContainer2 = new JAssistMethodData(MethodsItems,
+                "(Lcom/wurmonline/server/behaviours/Action;Lcom/wurmonline/server/items/Item;Lcom/wurmonline/server/items/Item;Lcom/wurmonline/server/creatures/Creature;)V",
+                "fillContainer");
+        // When getFreeVolume is altered to always return max.integer it messed up filling containers with liquid.
+        // In fillContainer() redirect the getFreeVolume call to a hook in mod that returns the same as WU default.
+        fillContainer1.getCtMethod().instrument(new ExprEditor() {
+            @Override
+            public void edit(MethodCall methodCall) throws CannotCompileException {
+                if (Objects.equals("getFreeVolume", methodCall.getMethodName())) {
+                    logger.log(Level.FINE, fillContainer1.getCtMethod().getName() + " method,  edit call call to " +
+                            methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
+                    methodCall.replace("$_ = com.Joedobo27.bigcontainers.BigContainersBAEAMod.getFreeVolumeHook(source);");
+                    successes[12] = 1;
+                }
+            }
+        });
+        fillContainer2.getCtMethod().instrument(new ExprEditor() {
+            @Override
+            public void edit(MethodCall methodCall) throws CannotCompileException {
+                if (Objects.equals("getFreeVolume", methodCall.getMethodName())) {
+                    logger.log(Level.FINE, fillContainer2.getCtMethod().getName() + " method,  edit call call to " +
+                            methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
+                    methodCall.replace("$_ = com.Joedobo27.bigcontainers.BigContainersBAEAMod.getFreeVolumeHook(source);");
+                    successes[13] = 1;
+                }
+            }
+        });
+
+        JAssistMethodData getFreeVolume = new JAssistMethodData(itemClass,
+                "()I", "getFreeVolume");
+        getFreeVolume.getCtMethod().setBody("return Integer.MAX_VALUE;");
+
+        evaluateChangesArray(successes, "unlimitedSpace");
     }
 
     private static int makeContainersBigReflection(int[] makeBig) throws NoSuchFieldException, IllegalAccessException {
@@ -345,7 +352,7 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
                 ItemTemplateFactory.class, ReflectionUtil.getField(ItemTemplateFactory.class, "templates"));
         Field fieldOnePerTile = ReflectionUtil.getField(ItemTemplate.class, "onePerTile");
         for (ItemTemplate template : fieldTemplates.values()) {
-            Boolean onePerTile = null;
+            Boolean onePerTile;
             onePerTile = ReflectionUtil.getPrivateField(template, fieldOnePerTile);
             if (onePerTile) {
                 ReflectionUtil.setPrivateField(template, fieldOnePerTile, Boolean.FALSE);
@@ -443,14 +450,28 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         return removeInsideOutsideLimitsCount;
     }
 
-    private static int getFieldValue(String fieldName, String className) throws NotFoundException, ClassNotFoundException, IllegalAccessException {
-        Class clazz = Class.forName(className);
-        Field[] fields = clazz.getFields();
-        for (Field a : fields){
-            if( Objects.equals(fieldName, a.getName())){
-                return (int)a.get(null);
-            }
+    @SuppressWarnings("unused")
+    public static int getFreeVolumeHook(Item item) {
+        return item.getContainerVolume() - getUsedVolume(item);
+    }
+
+    private static int getUsedVolume(Item item) {
+        try {
+            Method getUsedVolume = Class.forName("com.wurmonline.server.items.Item").getDeclaredMethod("getUsedVolume");
+            return (int) getUsedVolume.invoke(item);
+        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
+            logger.log(Level.WARNING, e.getMessage(), e);
         }
-        return 0;
+        return -1;
+    }
+
+    private static void evaluateChangesArray(int[] ints, String option) {
+        boolean changesSuccessful = !Arrays.stream(ints).anyMatch(value -> value == 0);
+        if (changesSuccessful) {
+            logger.log(Level.INFO, option + " option changes SUCCESSFUL");
+        } else {
+            logger.log(Level.INFO, option + " option changes FAILURE");
+            logger.log(Level.FINE, Arrays.toString(ints));
+        }
     }
 }
