@@ -41,6 +41,7 @@ class BytecodeTools {
         int bitLine2;
         int findSize = findInts.size();
         logger.log(Level.FINE, "findSize: " + Integer.toString(findSize));
+        logger.log(Level.FINE, "replaceSize: " + Integer.toString(replaceInts.size()));
         CIStack ciStack = new CIStack(findSize);
 
         ci.begin();
@@ -147,6 +148,9 @@ class BytecodeTools {
                 break;
             case "String":
                 poolIndex = cp.addStringInfo(splitDesc1[2]);
+                break;
+            case "int":
+                poolIndex = cp.addIntegerInfo(Integer.parseInt(splitDesc1[2]));
         }
         if (Objects.equals(poolIndex, EMPTY_INT))
             throw new UnsupportedOperationException();
@@ -211,69 +215,79 @@ class BytecodeTools {
             descriptor = splitDesc1[4];
         }
         for (int i = 1; i < cp.getSize(); i++) {
-            try {
-                switch (splitDesc1[1]) {
-                    case "Method":
-                        eqResult = cp.eqMember(name, descriptor, i);
-                        cpClass = cp.getMethodrefClassName(i);
-                        if (eqResult != null && Objects.equals(refClass, cpClass)) {
-                            byteAddress = intToByteArray(i, 2);
-                        }
+            switch (splitDesc1[1]) {
+                case "Method":
+                    if (cp.getTag(i) != ConstPool.CONST_Methodref)
                         break;
-                    case "String":
-                        String cpStr = cp.getStringInfo(i);
-                        String refStr = splitDesc1[2];
-                        if (cpStr != null && Objects.equals(cpStr, refStr))
-                            byteAddress = intToByteArray(i, 2);
+                    eqResult = cp.eqMember(name, descriptor, i);
+                    cpClass = cp.getMethodrefClassName(i);
+                    if (eqResult != null && Objects.equals(refClass, cpClass)) {
+                        byteAddress = intToByteArray(i, 2);
+                    }
+                    break;
+                case "String":
+                    if (cp.getTag(i) != ConstPool.CONST_String)
                         break;
-                    case "Field":
-                        eqResult = cp.eqMember(name, descriptor, i);
-                        cpClass = cp.getFieldrefClassName(i);
-                        if (eqResult != null && Objects.equals(refClass, cpClass))
-                            byteAddress = intToByteArray(i, 2);
+                    String cpStr = cp.getStringInfo(i);
+                    String refStr = splitDesc1[2];
+                    if (cpStr != null && Objects.equals(cpStr, refStr))
+                        byteAddress = intToByteArray(i, 2);
+                    break;
+                case "Field":
+                    if (cp.getTag(i) != ConstPool.CONST_Fieldref)
                         break;
-                    case "class":
-                        refClass = splitDesc1[2];
-                        refClass = refClass.replace("/", ".");
-                        cpClass = cp.getClassInfo(i);
-                        if (cpClass != null && Objects.equals(cpClass, refClass))
-                            byteAddress = intToByteArray(i, 2);
+                    eqResult = cp.eqMember(name, descriptor, i);
+                    cpClass = cp.getFieldrefClassName(i);
+                    if (eqResult != null && Objects.equals(refClass, cpClass))
+                        byteAddress = intToByteArray(i, 2);
+                    break;
+                case "class":
+                    if (cp.getTag(i) != ConstPool.CONST_Class)
                         break;
-                    case "long":
-                        long cpLong = cp.getLongInfo(i);
-                        long refLong = Long.parseLong(splitDesc1[2].replace("l", ""), 10);
-                        if (Objects.equals(cpLong, refLong))
-                            byteAddress = intToByteArray(i, 2);
+                    refClass = splitDesc1[2];
+                    refClass = refClass.replace("/", ".");
+                    cpClass = cp.getClassInfo(i);
+                    if (cpClass != null && Objects.equals(cpClass, refClass))
+                        byteAddress = intToByteArray(i, 2);
+                    break;
+                case "long":
+                    if (cp.getTag(i) != ConstPool.CONST_Long)
                         break;
-                    case "float":
-                        float cpFloat = cp.getFloatInfo(i);
-                        float refFloat = Float.parseFloat(splitDesc1[2].replace("f", ""));
-                        if (Objects.equals(cpFloat, refFloat))
-                            byteAddress = intToByteArray(i, 2);
+                    long cpLong = cp.getLongInfo(i);
+                    long refLong = Long.parseLong(splitDesc1[2].replace("l", ""), 10);
+                    if (Objects.equals(cpLong, refLong))
+                        byteAddress = intToByteArray(i, 2);
+                    break;
+                case "float":
+                    if (cp.getTag(i) != ConstPool.CONST_Float)
                         break;
-                    case "InterfaceMethod":
-                        eqResult = cp.eqMember(name, descriptor, i);
-                        cpClass = cp.getInterfaceMethodrefClassName(i);
-                        if (eqResult != null && Objects.equals(refClass, cpClass))
-                            byteAddress = intToByteArray(i,2);
+                    float cpFloat = cp.getFloatInfo(i);
+                    float refFloat = Float.parseFloat(splitDesc1[2].replace("f", ""));
+                    if (Objects.equals(cpFloat, refFloat))
+                        byteAddress = intToByteArray(i, 2);
+                    break;
+                case "InterfaceMethod":
+                    if (cp.getTag(i) != ConstPool.CONST_InterfaceMethodref)
                         break;
-                }
-            } catch (ClassCastException ignored) {
-                // This method does ConstPool information fetching that throws this exception often, ignore it.
+                    eqResult = cp.eqMember(name, descriptor, i);
+                    cpClass = cp.getInterfaceMethodrefClassName(i);
+                    if (eqResult != null && Objects.equals(refClass, cpClass))
+                        byteAddress = intToByteArray(i,2);
+                    break;
             }
-            if (byteAddress != null) {
+            if (byteAddress != null)
                 break;
-            }
         }
-        if (byteAddress == null) {
-            throw new UnsupportedOperationException();
-        }
+        if (byteAddress == null)
+            throw new UnsupportedOperationException(String.format("Did not find in ConstantPool: name= %s, descriptor= %s", name, descriptor));
         return byteAddress;
     }
 
     private static byte[] intToByteArray(int value, int byteLength) {
         switch (byteLength) {
 
+            case 1:
+                return new byte[]{(byte) value};
             case 2:
                 return new byte[]{
                         (byte) (value >>> 8),
@@ -288,7 +302,8 @@ class BytecodeTools {
         return new byte[0];
     }
 
-    private static int byteArrayToInt(byte[] b, int byteLength) {
+    @SuppressWarnings("WeakerAccess")
+    public static int byteArrayToInt(byte[] b, int byteLength) {
         switch (byteLength) {
 
             case 2:

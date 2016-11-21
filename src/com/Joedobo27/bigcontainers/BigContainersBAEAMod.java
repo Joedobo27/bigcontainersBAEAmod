@@ -14,8 +14,6 @@ import org.gotti.wurmunlimited.modloader.interfaces.*;
 
 import java.io.FileNotFoundException;
 import java.lang.reflect.Field;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -183,19 +181,19 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
             @Override
             public void edit(MethodCall methodCall) throws CannotCompileException {
                 if (Objects.equals("getContainerSizeX", methodCall.getMethodName())){
-                    logger.log(Level.FINE, methodName + " method,  edit call call to " +
+                    logger.log(Level.FINE, methodName + " method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
                     successes[0] = 1;
                 }
                 else if (Objects.equals("getContainerSizeY", methodCall.getMethodName())){
-                    logger.log(Level.FINE, methodName + " method,  edit call call to " +
+                    logger.log(Level.FINE, methodName + " method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
                     successes[1] = 1;
                 }
                 else if (Objects.equals("getContainerSizeZ", methodCall.getMethodName())){
-                    logger.log(Level.FINE, methodName + " method,  edit call call to " +
+                    logger.log(Level.FINE, methodName + " method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
                     successes[2] = 1;
@@ -209,19 +207,19 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
             @Override
             public void edit(MethodCall methodCall) throws CannotCompileException {
                 if (Objects.equals("getContainerSizeX", methodCall.getMethodName())){
-                    logger.log(Level.FINE, targetCanNotBeInsertedCheck.getCtMethod().getName() + " method,  edit call call to " +
+                    logger.log(Level.FINE, targetCanNotBeInsertedCheck.getCtMethod().getName() + " method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
                     successes[3] = 1;
                 }
                 else if (Objects.equals("getContainerSizeY", methodCall.getMethodName())){
-                    logger.log(Level.FINE, targetCanNotBeInsertedCheck.getCtMethod().getName() + " method,  edit call call to " +
+                    logger.log(Level.FINE, targetCanNotBeInsertedCheck.getCtMethod().getName() + " method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
                     successes[4] = 1;
                 }
                 else if (Objects.equals("getContainerSizeZ", methodCall.getMethodName())){
-                    logger.log(Level.FINE, targetCanNotBeInsertedCheck.getCtMethod().getName() + " method,  edit call call to " +
+                    logger.log(Level.FINE, targetCanNotBeInsertedCheck.getCtMethod().getName() + " method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
                     successes[5] = 1;
@@ -239,19 +237,19 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
             @Override
             public void edit(MethodCall methodCall) throws CannotCompileException {
                 if (Objects.equals("getSizeX", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 2780){
-                    logger.log(Level.FINE, moveToItem.getCtMethod().getName() + " method,  edit call call to " +
+                    logger.log(Level.FINE, moveToItem.getCtMethod().getName() + " method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
                     successes[6] = 1;
                 }
                 else if (Objects.equals("getSizeY", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 2801){
-                    logger.log(Level.FINE, moveToItem.getCtMethod().getName() + " method,  edit call call to " +
+                    logger.log(Level.FINE, moveToItem.getCtMethod().getName() + " method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
                     successes[7] = 1;
                 }
                 else if (Objects.equals("getSizeZ", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 2822) {
-                    logger.log(Level.FINE, moveToItem.getCtMethod().getName() + " method,  edit call call to " +
+                    logger.log(Level.FINE, moveToItem.getCtMethod().getName() + " method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
                     successes[8] = 1;
@@ -266,19 +264,19 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
            @Override
             public void edit(MethodCall methodCall) throws CannotCompileException {
                 if (Objects.equals("getContainerSizeX", methodCall.getMethodName())){
-                    logger.log(Level.FINE, testInsertHollowItem.getCtMethod().getName() + " method,  edit call call to " +
+                    logger.log(Level.FINE, testInsertHollowItem.getCtMethod().getName() + " method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
                     successes[9] = 1;
                 }
                 else if (Objects.equals("getContainerSizeY", methodCall.getMethodName())){
-                    logger.log(Level.FINE, testInsertHollowItem.getCtMethod().getName() + " method,  edit call call to " +
+                    logger.log(Level.FINE, testInsertHollowItem.getCtMethod().getName() + " method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
                     successes[10] = 1;
                 }
                 else if (Objects.equals("getContainerSizeZ", methodCall.getMethodName())){
-                    logger.log(Level.FINE, testInsertHollowItem.getCtMethod().getName() + " method,  edit call call to " +
+                    logger.log(Level.FINE, testInsertHollowItem.getCtMethod().getName() + " method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
                     successes[11] = 1;
@@ -299,7 +297,7 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
             @Override
             public void edit(MethodCall methodCall) throws CannotCompileException {
                 if (Objects.equals("getFreeVolume", methodCall.getMethodName())) {
-                    logger.log(Level.FINE, fillContainer1.getCtMethod().getName() + " method,  edit call call to " +
+                    logger.log(Level.FINE, fillContainer1.getCtMethod().getName() + " method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = com.Joedobo27.bigcontainers.BigContainersBAEAMod.getFreeVolumeHook(source);");
                     successes[12] = 1;
@@ -310,7 +308,7 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
             @Override
             public void edit(MethodCall methodCall) throws CannotCompileException {
                 if (Objects.equals("getFreeVolume", methodCall.getMethodName())) {
-                    logger.log(Level.FINE, fillContainer2.getCtMethod().getName() + " method,  edit call call to " +
+                    logger.log(Level.FINE, fillContainer2.getCtMethod().getName() + " method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
                     methodCall.replace("$_ = com.Joedobo27.bigcontainers.BigContainersBAEAMod.getFreeVolumeHook(source);");
                     successes[13] = 1;
@@ -456,13 +454,21 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
     }
 
     private static int getUsedVolume(Item item) {
-        try {
-            Method getUsedVolume = Class.forName("com.wurmonline.server.items.Item").getDeclaredMethod("getUsedVolume");
-            return (int) getUsedVolume.invoke(item);
-        } catch (ClassNotFoundException | NoSuchMethodException | IllegalAccessException | InvocationTargetException e) {
-            logger.log(Level.WARNING, e.getMessage(), e);
+        int used = 0;
+        for (final Item i : item.getItems()) {
+            if (!i.isInventoryGroup()) {
+                if (i.isLiquid() || i.isBulkItem()) {
+                    used += i.getWeightGrams();
+                }
+                else {
+                    used += i.getVolume();
+                }
+            }
+            else {
+                used += getUsedVolume(i);
+            }
         }
-        return -1;
+        return used;
     }
 
     private static void evaluateChangesArray(int[] ints, String option) {
