@@ -1,4 +1,4 @@
-package com.Joedobo27.bigcontainers;
+package com.joedobo27.bigcontainers;
 
 import javassist.bytecode.*;
 
@@ -283,7 +283,7 @@ class BytecodeTools {
         return byteAddress;
     }
 
-    private static byte[] intToByteArray(int value, int byteLength) {
+    static byte[] intToByteArray(int value, int byteLength) {
         switch (byteLength) {
 
             case 1:
@@ -302,7 +302,6 @@ class BytecodeTools {
         return new byte[0];
     }
 
-    @SuppressWarnings("WeakerAccess")
     public static int byteArrayToInt(byte[] b, int byteLength) {
         switch (byteLength) {
 
