@@ -25,16 +25,12 @@ import static com.joedobo27.bigcontainers.ClassPathAndMethodDescriptors.*;
 
 public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStartedListener, Configurable {
 
-    private static boolean makeContainersBig = false;
     private static boolean unlimitedSpace = false;
     private static boolean removeOnePerTileLimits = false;
     private static boolean resizePelt = false;
-    private static boolean makeItemsBulk = false;
-    private static boolean makeItemsCombine = false;
     private static boolean removeInsideOutsideLimits = false;
-    private static int[] bigLiquidHolders;
-    private static int[] makeBulkItems;
-    private static int[] makeCombineItems;
+    private static int[] makeItemsBulk;
+    private static int[] makeItemsCombine;
 
     private static ClassPool classPool;
     private static Logger logger;
@@ -42,28 +38,28 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
     static {
         logger = Logger.getLogger(BigContainersBAEAMod.class.getName());
         classPool = HookManager.getInstance().getClassPool();
+
     }
 
     @Override
     public void configure(Properties properties) {
-        makeContainersBig = Boolean.parseBoolean(properties.getProperty("makeContainersBig", Boolean.toString(makeContainersBig)));
         unlimitedSpace = Boolean.parseBoolean(properties.getProperty("unlimitedSpace", Boolean.toString(unlimitedSpace)));
-        removeOnePerTileLimits = Boolean.parseBoolean(properties.getProperty("removeOnePerTileLimits", Boolean.toString(removeOnePerTileLimits)));
+        removeOnePerTileLimits = Boolean.parseBoolean(properties.getProperty("removeOnePerTileLimits",
+                Boolean.toString(removeOnePerTileLimits)));
         resizePelt = Boolean.parseBoolean(properties.getProperty("resizePelt", Boolean.toString(resizePelt)));
-        makeItemsBulk = Boolean.parseBoolean(properties.getProperty("makeItemsBulk", Boolean.toString(makeItemsBulk)));
-        makeItemsCombine = Boolean.parseBoolean(properties.getProperty("makeItemsCombine", Boolean.toString(makeItemsCombine)));
-        removeInsideOutsideLimits = Boolean.parseBoolean(properties.getProperty("removeInsideOutsideLimits", Boolean.toString(removeInsideOutsideLimits)));
+        removeInsideOutsideLimits = Boolean.parseBoolean(properties.getProperty("removeInsideOutsideLimits",
+                Boolean.toString(removeInsideOutsideLimits)));
 
-        bigLiquidHolders = Arrays.stream(properties.getProperty("bigLiquidHolders", Arrays.toString(bigLiquidHolders)).replaceAll("\\s", "").split(",")).mapToInt(Integer::parseInt).toArray();
-        makeBulkItems = Arrays.stream(properties.getProperty("makeBulkItems", Arrays.toString(makeBulkItems)).replaceAll("\\s", "").split(",")).mapToInt(Integer::parseInt).toArray();
-        makeCombineItems = Arrays.stream(properties.getProperty("makeCombineItems", Arrays.toString(makeCombineItems)).replaceAll("\\s", "").split(",")).mapToInt(Integer::parseInt).toArray();
-
+        makeItemsBulk = Arrays.stream(properties.getProperty("makeBulkItems",
+                Arrays.toString(makeItemsBulk)).replaceAll("\\s", "").split(",")).mapToInt(Integer::parseInt).toArray();
+        makeItemsCombine = Arrays.stream(properties.getProperty("makeItemsCombine",
+                Arrays.toString(makeItemsCombine)).replaceAll("\\s", "").split(",")).mapToInt(Integer::parseInt).toArray();
     }
 
     @Override
     public void init() {
         try {
-            if (makeItemsCombine)
+            if (makeItemsCombine.length > 0)
                 checkSaneAmountsBytecodeAlter();
             if (unlimitedSpace) {
                 int[] successes = new int[12];
@@ -100,23 +96,13 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
 
     @Override
     public void onServerStarted() {
-        /*
-        int[] bigLiquidHolders = {ItemList.barrelHuge, ItemList.barrelLarge, ItemList.stoneFountain,
-                ItemList.stoneFountain2};
-        int[] makeBulk = {ItemList.logHuge, ItemList.pelt, ItemList.saddle, ItemList.stoneKeystone,
-                ItemList.marbleKeystone, ItemList.fishingHookWood, ItemList.fishingHookIron, ItemList.fishingHookWoodAndString,
-                ItemList.fishingHookIronAndString}; // in addition by default all items of type fish or gem.
-        int[] makeCombine = {ItemList.cochineal, ItemList.woad, ItemList.acorn};
-        */
         try {
-            int makeContainersBigCount = makeContainersBigReflection(bigLiquidHolders);
             int removeOnePerTileLimitsCount = removeOnePerTileLimitsReflection();
             resizePeltReflection();
-            int makeItemsBulkCount = makeItemsBulkReflection(makeBulkItems);
-            int makeItemsCombineCount = makeItemsCombineReflection(makeCombineItems);
+            int makeItemsBulkCount = makeItemsBulkReflection(makeItemsBulk);
+            int makeItemsCombineCount = makeItemsCombineReflection(makeItemsCombine);
             int removeInsideOutsideLimitsCount = removeInsideOutsideLimitsReflection();
 
-            logger.log(Level.INFO, "Number of Containers maxed to 1,728,000 L is " + Integer.toString(makeContainersBigCount));
             logger.log(Level.INFO, "Number of one per tile restrictions removed is " + Integer.toString(removeOnePerTileLimitsCount));
             logger.log(Level.INFO, "Number of items marked as bulk is " + Integer.toString(makeItemsBulkCount));
             logger.log(Level.INFO, "Number of items marked as combine is " + Integer.toString(makeItemsCombineCount));
@@ -388,25 +374,6 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         return successes;
     }
 
-    private static int makeContainersBigReflection(int[] makeBig) throws NoSuchFieldException, IllegalAccessException {
-        int makeContainersBigCount = 0;
-        if (!makeContainersBig)
-            return makeContainersBigCount;
-        Map<Integer, ItemTemplate> fieldTemplates = ReflectionUtil.getPrivateField(
-                ItemTemplateFactory.class, ReflectionUtil.getField(ItemTemplateFactory.class, "templates"));
-        Field fieldUsesSpecifiedContainerSizes = ReflectionUtil.getField(ItemTemplate.class, "usesSpecifiedContainerSizes");
-        for (ItemTemplate template : fieldTemplates.values()) {
-            Integer itemId = template.getTemplateId();
-            if (template.isHollow() && (!template.isContainerLiquid() || Arrays.stream(makeBig).filter(value -> Objects.equals(value, itemId)).count() > 0)) {
-                if (!template.usesSpecifiedContainerSizes())
-                    ReflectionUtil.setPrivateField(template, fieldUsesSpecifiedContainerSizes, Boolean.TRUE);
-                template.setContainerSize(1200, 1200, 1200);
-                makeContainersBigCount++;
-            }
-        }
-        return makeContainersBigCount;
-    }
-
     private static int removeOnePerTileLimitsReflection() throws NoSuchFieldException, IllegalAccessException {
         int removeOnePerTileLimitsCount = 0;
         if (!removeOnePerTileLimits)
@@ -452,7 +419,7 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
 
     private static int makeItemsBulkReflection(int[] makeBulk) throws NoSuchFieldException, IllegalAccessException {
         int makeItemsBulkCount = 0;
-        if (!makeItemsBulk)
+        if (makeItemsBulk.length == 0)
             return makeItemsBulkCount;
         Map<Integer, ItemTemplate> fieldTemplates = ReflectionUtil.getPrivateField(
                 ItemTemplateFactory.class, ReflectionUtil.getField(ItemTemplateFactory.class, "templates"));
@@ -471,7 +438,7 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
 
     private static int makeItemsCombineReflection(int[] makeCombine) throws NoSuchFieldException, IllegalAccessException {
         int makeItemsCombineCount = 0;
-        if (!makeItemsCombine)
+        if (makeItemsCombine.length == 0)
             return makeItemsCombineCount;
         int[] exceptions = {ItemList.woad, ItemList.dyeBlue, ItemList.acorn, ItemList.tannin,
                 ItemList.cochineal, ItemList.dyeRed, ItemList.dye, ItemList.lye};
@@ -496,14 +463,14 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
             return removeInsideOutsideLimitsCount;
         Map<Integer, ItemTemplate> fieldTemplates = ReflectionUtil.getPrivateField(
                 ItemTemplateFactory.class, ReflectionUtil.getField(ItemTemplateFactory.class, "templates"));
-        Field fieldOutsideonly = ReflectionUtil.getField(ItemTemplate.class, "outsideonly");
-        Field fieldInsideOnly = ReflectionUtil.getField(ItemTemplate.class, "insideOnly");
+        Field outsideOnly = ReflectionUtil.getField(ItemTemplate.class, "outsideonly");
+        Field insideOnly = ReflectionUtil.getField(ItemTemplate.class, "insideOnly");
         for (ItemTemplate template : fieldTemplates.values()) {
-            Boolean insideOnly = ReflectionUtil.getPrivateField(template, fieldInsideOnly);
-            if (template.isOutsideOnly() || insideOnly) {
+            Boolean isInsideOnly = ReflectionUtil.getPrivateField(template, insideOnly);
+            if (template.isOutsideOnly() || isInsideOnly) {
                 try {
-                    ReflectionUtil.setPrivateField(template, fieldOutsideonly, Boolean.FALSE);
-                    ReflectionUtil.setPrivateField(template, fieldInsideOnly, Boolean.FALSE);
+                    ReflectionUtil.setPrivateField(template, outsideOnly, Boolean.FALSE);
+                    ReflectionUtil.setPrivateField(template, insideOnly, Boolean.FALSE);
                 } catch (IllegalAccessException e) {
                     e.printStackTrace();
                 }
