@@ -17,6 +17,7 @@ import java.lang.reflect.Field;
 import java.util.*;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Collectors;
 
 import static com.joedobo27.bigcontainers.BytecodeTools.addConstantPoolReference;
 import static com.joedobo27.bigcontainers.BytecodeTools.findConstantPoolReference;
@@ -29,17 +30,11 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
     private static boolean removeOnePerTileLimits = false;
     private static boolean resizePelt = false;
     private static boolean removeInsideOutsideLimits = false;
-    private static int[] makeItemsBulk;
-    private static int[] makeItemsCombine;
+    private static ArrayList<Integer> makeItemsBulk = new ArrayList<>();
+    private static ArrayList<Integer> makeItemsCombine = new ArrayList<>();
 
-    private static ClassPool classPool;
-    private static Logger logger;
-
-    static {
-        logger = Logger.getLogger(BigContainersBAEAMod.class.getName());
-        classPool = HookManager.getInstance().getClassPool();
-
-    }
+    private static ClassPool classPool = HookManager.getInstance().getClassPool();
+    private static Logger logger = Logger.getLogger(BigContainersBAEAMod.class.getName());
 
     @Override
     public void configure(Properties properties) {
@@ -50,42 +45,45 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         removeInsideOutsideLimits = Boolean.parseBoolean(properties.getProperty("removeInsideOutsideLimits",
                 Boolean.toString(removeInsideOutsideLimits)));
 
-        makeItemsBulk = Arrays.stream(properties.getProperty("makeBulkItems",
-                Arrays.toString(makeItemsBulk)).replaceAll("\\s", "").split(",")).mapToInt(Integer::parseInt).toArray();
-        makeItemsCombine = Arrays.stream(properties.getProperty("makeItemsCombine",
-                Arrays.toString(makeItemsCombine)).replaceAll("\\s", "").split(",")).mapToInt(Integer::parseInt).toArray();
+        if (properties.getProperty("makeBulkItems").length() > 0) {
+            logger.log(Level.INFO, "makeBulkItems: " + properties.getProperty("makeBulkItems"));
+            makeItemsBulk = Arrays.stream(properties.getProperty("makeBulkItems").replaceAll("\\s", "").split(","))
+                    .mapToInt(Integer::parseInt)
+                    .boxed()
+                    .collect(Collectors.toCollection(ArrayList::new));
+        }
+        if (properties.getProperty("makeItemsCombine").length() > 0) {
+            logger.log(Level.INFO, "makeItemsCombine: " + properties.getProperty("makeItemsCombine"));
+            makeItemsCombine = Arrays.stream(properties.getProperty("makeItemsCombine")
+                    .replaceAll("\\s", "").split(","))
+                    .mapToInt(Integer::parseInt)
+                    .boxed()
+                    .collect(Collectors.toCollection(ArrayList::new));
+        }
     }
 
     @Override
     public void init() {
         try {
-            if (makeItemsCombine.length > 0)
+            if (!makeItemsCombine.isEmpty())
                 checkSaneAmountsBytecodeAlter();
             if (unlimitedSpace) {
                 int[] successes = new int[12];
                 Arrays.fill(successes, 0);
                 int[] result;
-                int nextSuccessInsertOrdinal;
 
                 hasSpaceForBytecodeAlter();
                 result = targetCanNotBeInsertedCheckBytecodeAlter();
-                nextSuccessInsertOrdinal = result.length;
-                System.arraycopy(result,0, successes, 0, result.length);
-                //successes[0] = result[0]; successes[1] = result[1]; successes[2] = result[2];
+                System.arraycopy(result,0, successes, 0, 4);
 
                 result = insertItemBytecodeAlter();
-                System.arraycopy(result,0, successes, nextSuccessInsertOrdinal, result.length);
-                nextSuccessInsertOrdinal += result.length;
-                //successes[3] = result[0]; successes[4] = result[1];
+                System.arraycopy(result,0, successes, 4, 2);
 
                 result = moveToItemBytecodeAlter();
-                System.arraycopy(result,0, successes, nextSuccessInsertOrdinal, result.length);
-                nextSuccessInsertOrdinal += result.length;
-                //successes[5] = result[0]; successes[6] = result[1]; successes[7] = result[2]; successes[8] = result[3];
+                System.arraycopy(result,0, successes, 6, 4);
 
                 result = testInsertHollowItemBytecodeAlter();
-                System.arraycopy(result,0, successes, nextSuccessInsertOrdinal, result.length);
-                //successes[9] = result[0]; successes[10] = result[0];
+                System.arraycopy(result,0, successes, 10, 2);
 
                 evaluateChangesArray(successes, "unlimitedSpace");
             }
@@ -284,10 +282,8 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
      * larger then the object being placed inside it.
      *  if (target.getSizeX() < this.getSizeX() || target.getSizeY() < this.getSizeY() || target.getSizeZ() <= this.getSizeZ()) {...}
      *
-     *  the getLineNumber values include that whole if statement and preventing identify with getLineNumber.
-     *  line 3055: 3513
-     *  line 3057: 3549
-     *  The Bytecode indexes change with each
+     *  the getLineNumber values include that whole if statement and prevents identify with getLineNumber.
+     *  The Bytecode indexes change with each insert so it won't match javap indexes.
      *
      * Alter hasSpaceFor so it always true.
      *  if (!target.isCrate() && target.hasSpaceFor(this.getVolume())) {
@@ -308,19 +304,19 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         moveToItem.getCtMethod().instrument(new ExprEditor() {
             @Override
             public void edit(MethodCall methodCall) throws CannotCompileException {
-                if (Objects.equals("getSizeX", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 3515){
+                if (Objects.equals("getSizeX", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 3545){
                     logger.log(Level.FINE, "moveToItem method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.indexOfBytecode());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
                     successes[0] = 1;
                 }
-                else if (Objects.equals("getSizeY", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 3536){
+                else if (Objects.equals("getSizeY", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 3566){
                     logger.log(Level.FINE, "moveToItem method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.indexOfBytecode());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
                     successes[1] = 1;
                 }
-                else if (Objects.equals("getSizeZ", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 3557) {
+                else if (Objects.equals("getSizeZ", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 3587) {
                     logger.log(Level.FINE, "moveToItem method,  edit call to " +
                             methodCall.getMethodName() + " at index " + methodCall.indexOfBytecode());
                     methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
@@ -417,9 +413,9 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         }
     }
 
-    private static int makeItemsBulkReflection(int[] makeBulk) throws NoSuchFieldException, IllegalAccessException {
+    private static int makeItemsBulkReflection(List<Integer> makeBulk) throws NoSuchFieldException, IllegalAccessException {
         int makeItemsBulkCount = 0;
-        if (makeItemsBulk.length == 0)
+        if (makeItemsBulk.isEmpty())
             return makeItemsBulkCount;
         Map<Integer, ItemTemplate> fieldTemplates = ReflectionUtil.getPrivateField(
                 ItemTemplateFactory.class, ReflectionUtil.getField(ItemTemplateFactory.class, "templates"));
@@ -428,7 +424,7 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         for (ItemTemplate template : fieldTemplates.values()) {
             Integer itemId = template.getTemplateId();
             Boolean isGem = ReflectionUtil.getPrivateField(template, fieldGem);
-            if (template.isFish() || isGem || Arrays.stream(makeBulk).filter(value -> Objects.equals(value, itemId)).count() > 0) {
+            if (template.isFish() || isGem || makeBulk.stream().filter(value -> Objects.equals(value, itemId)).count() > 0) {
                 ReflectionUtil.setPrivateField(template, fieldBulk, Boolean.TRUE);
                 makeItemsBulkCount++;
             }
@@ -436,9 +432,9 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         return makeItemsBulkCount;
     }
 
-    private static int makeItemsCombineReflection(int[] makeCombine) throws NoSuchFieldException, IllegalAccessException {
+    private static int makeItemsCombineReflection(List<Integer> makeCombine) throws NoSuchFieldException, IllegalAccessException {
         int makeItemsCombineCount = 0;
-        if (makeItemsCombine.length == 0)
+        if (makeItemsCombine.isEmpty())
             return makeItemsCombineCount;
         int[] exceptions = {ItemList.woad, ItemList.dyeBlue, ItemList.acorn, ItemList.tannin,
                 ItemList.cochineal, ItemList.dyeRed, ItemList.dye, ItemList.lye};
@@ -449,7 +445,7 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         Field fieldCombine = ReflectionUtil.getField(ItemTemplate.class, "combine");
         for (ItemTemplate template : fieldTemplates.values()) {
             Integer itemId = template.getTemplateId();
-            if (Arrays.stream(makeCombine).filter(value -> Objects.equals(value, itemId)).count() > 0) {
+            if (makeCombine.stream().filter(value -> Objects.equals(value, itemId)).count() > 0) {
                 ReflectionUtil.setPrivateField(template, fieldCombine, Boolean.TRUE);
                 makeItemsCombineCount++;
             }

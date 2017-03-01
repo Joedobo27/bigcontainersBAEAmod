@@ -4,7 +4,7 @@ public enum ClassPathAndMethodDescriptors {
     CREATION_ENTRY_CLASS("com.wurmonline.server.items.CreationEntry", "CreationEntry", ""),
     ITEM_CLASS("com.wurmonline.server.items.Item", "Item", ""),
     CARGO_TRANSPORTATION_METHODS_CLASS("com.wurmonline.server.behaviours.CargoTransportationMethods", "CargoTransportationMethods", ""),
-    MOVE_TO_ITEM_METHOD("","moveToItem", "(Lcom/wurmonline/server/creatures/Creature;JZ)Z"),
+    MOVE_TO_ITEM_METHOD("com.wurmonline.server.items.Item","moveToItem", "(Lcom/wurmonline/server/creatures/Creature;JZ)Z"),
     CHECK_SANE_AMOUNTS_METHOD("","checkSaneAmounts",
             "(Lcom/wurmonline/server/items/Item;ILcom/wurmonline/server/items/Item;ILcom/wurmonline/server/items/ItemTemplate;Lcom/wurmonline/server/creatures/Creature;Z)V"),
     HAS_SPACE_FOR_METHOD("","hasSpaceFor","(I)Z"),
