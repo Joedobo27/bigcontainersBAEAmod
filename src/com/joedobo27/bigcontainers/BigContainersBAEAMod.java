@@ -1,15 +1,10 @@
 package com.joedobo27.bigcontainers;
 
-import com.joedobo27.common.Common;
 import com.wurmonline.server.items.*;
 import javassist.*;
-import javassist.bytecode.BadBytecode;
-import javassist.bytecode.Bytecode;
-import javassist.bytecode.Opcode;
 import javassist.expr.ExprEditor;
 import javassist.expr.MethodCall;
 import org.gotti.wurmunlimited.modloader.ReflectionUtil;
-import org.gotti.wurmunlimited.modloader.classhooks.CodeReplacer;
 import org.gotti.wurmunlimited.modloader.classhooks.HookManager;
 import org.gotti.wurmunlimited.modloader.interfaces.*;
 
@@ -19,8 +14,6 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.stream.Collectors;
 
-import static com.joedobo27.bigcontainers.BytecodeTools.addConstantPoolReference;
-import static com.joedobo27.bigcontainers.BytecodeTools.findConstantPoolReference;
 import static com.joedobo27.bigcontainers.ClassPathAndMethodDescriptors.*;
 
 
@@ -65,8 +58,6 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
     @Override
     public void init() {
         try {
-            if (!makeItemsCombine.isEmpty())
-                checkSaneAmountsBytecodeAlter();
             if (unlimitedSpace) {
                 int[] successes = new int[12];
                 Arrays.fill(successes, 0);
@@ -87,7 +78,7 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
 
                 evaluateChangesArray(successes, "unlimitedSpace");
             }
-        } catch (NotFoundException | CannotCompileException | BadBytecode e) {
+        } catch (NotFoundException | CannotCompileException e) {
             logger.log(Level.WARNING, e.toString(), e);
         }
     }
@@ -108,76 +99,6 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         } catch (NoSuchFieldException | IllegalAccessException e) {
             logger.log(Level.WARNING, e.getMessage(), e);
         }
-    }
-
-    /**
-     * In CreationEntry.checkSaneAmounts()
-     * Byte code change: this.objectCreated != 73 to this.getObjectCreated() == 73
-     * Do this because it's not possible to instrument on a field and have the replace function use a returned value
-     * form a hook method.
-     * Then, expression editor hook into getObjectCreated and replace returned with checkSaneAmountsExceptionsHook.
-     * Using the hook instead of straight bytecode because it lets me use variable names form WU code.
-     *
-     * This change needs to be made because it blocks using very small things that can be combined.
-     *
-     * @throws BadBytecode JA related, forwarded
-     * @throws NotFoundException JA related, forwarded
-     * @throws CannotCompileException JA related, forwarded
-     */
-    private static void checkSaneAmountsBytecodeAlter() throws BadBytecode, NotFoundException, CannotCompileException {
-        final boolean[] toReturn = {false};
-        JAssistClassData creationEntry = JAssistClassData.getClazz(CREATION_ENTRY_CLASS.getName());
-        if (creationEntry == null)
-            creationEntry = new JAssistClassData(CREATION_ENTRY_CLASS.getPath(), classPool);
-        JAssistMethodData checkSaneAmounts = new JAssistMethodData(creationEntry, CHECK_SANE_AMOUNTS_METHOD.getDescriptor(),
-                CHECK_SANE_AMOUNTS_METHOD.getName());
-
-        boolean isModifiedCheckSaneAmounts = true;
-        byte[] findPoolResult;
-        try {
-            findConstantPoolReference(creationEntry.getConstPool(),
-                    "// Method com/joedobo27/common/Common.checkSaneAmountsExceptionsHook:(III)I");
-        } catch (UnsupportedOperationException e) {
-            isModifiedCheckSaneAmounts = false;
-        }
-        if (isModifiedCheckSaneAmounts)
-            toReturn[0] = true;
-        if (!isModifiedCheckSaneAmounts) {
-            Bytecode find = new Bytecode(creationEntry.getConstPool());
-            find.addOpcode(Opcode.ALOAD_0);
-            find.addOpcode(Opcode.GETFIELD);
-            findPoolResult = findConstantPoolReference(creationEntry.getConstPool(), "// Field objectCreated:I");
-            find.add(findPoolResult[0], findPoolResult[1]);
-            find.addOpcode(Opcode.BIPUSH);
-            find.add(73);
-
-            Bytecode replace = new Bytecode(creationEntry.getConstPool());
-            replace.addOpcode(Opcode.ALOAD_0);
-            replace.addOpcode(Opcode.INVOKEVIRTUAL);
-            findPoolResult = addConstantPoolReference(creationEntry.getConstPool(), "// Method getObjectCreated:()I");
-            replace.add(findPoolResult[0], findPoolResult[1]);
-            replace.addOpcode(Opcode.BIPUSH);
-            replace.add(73);
-
-            CodeReplacer codeReplacer = new CodeReplacer(checkSaneAmounts.getCodeAttribute());
-            try {
-                codeReplacer.replaceCode(find.get(), replace.get());
-            } catch (NotFoundException e){
-                toReturn[0] = false;
-            }
-
-            checkSaneAmounts.getCtMethod().instrument(new ExprEditor() {
-                @Override
-                public void edit(MethodCall methodCall) throws CannotCompileException {
-                    if (Objects.equals("getObjectCreated", methodCall.getMethodName())) {
-                        methodCall.replace("$_ = com.joedobo27.common.Common.checkSaneAmountsExceptionsHook( $0.getObjectCreated(), sourceMax, targetMax);");
-                        logger.log(Level.FINE, "CreationEntry.class, checkSaneAmounts(), installed hook at line: " + methodCall.getLineNumber());
-                        toReturn[0] = true;
-                    }
-                }
-            });
-        }
-        evaluateChangesArray(toReturn[0] ? new int[]{1} : new int[]{0}, "makeItemsCombine");
     }
 
     /**
@@ -436,9 +357,6 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, ServerStar
         int makeItemsCombineCount = 0;
         if (makeItemsCombine.isEmpty())
             return makeItemsCombineCount;
-        int[] exceptions = {ItemList.woad, ItemList.dyeBlue, ItemList.acorn, ItemList.tannin,
-                ItemList.cochineal, ItemList.dyeRed, ItemList.dye, ItemList.lye};
-        Common.addExceptions(exceptions);
 
         Map<Integer, ItemTemplate> fieldTemplates = ReflectionUtil.getPrivateField(
                 ItemTemplateFactory.class, ReflectionUtil.getField(ItemTemplateFactory.class, "templates"));
