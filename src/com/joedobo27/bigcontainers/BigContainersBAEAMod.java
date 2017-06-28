@@ -2,9 +2,12 @@ package com.joedobo27.bigcontainers;
 
 
 import javassist.*;
+import javassist.bytecode.BadBytecode;
 import javassist.bytecode.Descriptor;
+import javassist.bytecode.Opcode;
 import javassist.expr.ExprEditor;
 import javassist.expr.MethodCall;
+import org.gotti.wurmunlimited.modloader.classhooks.CodeReplacer;
 import org.gotti.wurmunlimited.modloader.classhooks.HookManager;
 import org.gotti.wurmunlimited.modloader.interfaces.*;
 
@@ -13,29 +16,14 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 
-public class BigContainersBAEAMod implements WurmServerMod, Initable, Configurable {
+public class BigContainersBAEAMod implements WurmServerMod, Initable {
 
 
-    private static final String[] STEAM_VERSION = new String[]{"1.3.1.3"};
-    private static boolean versionCompliant = false;
     private static Logger logger = Logger.getLogger(BigContainersBAEAMod.class.getName());
 
     @Override
-    public void configure(Properties properties) {
-        if (Arrays.stream(STEAM_VERSION)
-                .filter(s -> Objects.equals(s, properties.getProperty("steamVersion", null)))
-                .count() > 0)
-            versionCompliant = true;
-        else
-            logger.log(Level.WARNING, "WU version mismatch. Your " + properties.getProperty(" steamVersion", null)
-                    + "version doesn't match one of BulkOptionsMod's required versions " + Arrays.toString(STEAM_VERSION));
-    }
-
-    @Override
     public void init() {
-        if (!versionCompliant)
-            return;
-        int[] successes = new int[13];
+        int[] successes = new int[10];
         Arrays.fill(successes, 0);
         int[] result;
 
@@ -49,10 +37,10 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, Configurab
         System.arraycopy(result,0, successes, 5, 2);
 
         result = moveToItemBytecodeAlter();
-        System.arraycopy(result,0, successes, 7, 4);
+        System.arraycopy(result,0, successes, 7, 1);
 
         result = testInsertHollowItemBytecodeAlter();
-        System.arraycopy(result,0, successes, 11, 2);
+        System.arraycopy(result,0, successes, 8, 2);
 
         evaluateChangesArray(successes);
     }
@@ -168,22 +156,17 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, Configurab
     }
 
     /**
-     * Edit the target.getSize?() returned values to be integer.MAX_VALUE. This makes it so the container's measurements are always
-     * larger then the object being placed inside it.
+     * Edit the Item.moveToItem() to simply skip over the follow code block.
      *  if (target.getSizeX() < this.getSizeX() || target.getSizeY() < this.getSizeY() || target.getSizeZ() <= this.getSizeZ()) {...}
      *
-     *  the getLineNumber values include that whole if statement and prevents identify with getLineNumber.
-     *  The Bytecode indexes change with each insert so it won't match javap indexes.
-     *
-     * Alter hasSpaceFor so it always true.
-     *  if (!target.isCrate() && target.hasSpaceFor(this.getVolume())) {
-     *
+     *  This edit doesn't work well with ExprEditor because in order to pinpoint a change methodCall.indexOfBytecode() is needed.
+     *  For some reason trying to replace the logic block with NOPs causes stack map problems. Instead pop the values returned from
+     *  getSize?(), push a zero into the stack in there place and do a IFEQ branch.
      *
      * @return int[] object. Where changes successful, yes 1, no 0.
      */
     private static int[] moveToItemBytecodeAlter() {
-        int[] successes = new int[4];
-        Arrays.fill(successes, 0);
+        int[] successes = new int[]{0};
 
         try {
             CtClass itemCt = HookManager.getInstance().getClassPool().get("com.wurmonline.server.items.Item");
@@ -193,33 +176,53 @@ public class BigContainersBAEAMod implements WurmServerMod, Initable, Configurab
                     CtPrimitiveType.longType, CtPrimitiveType.booleanType
             };
             CtMethod moveToItemCt = itemCt.getMethod("moveToItem", Descriptor.ofMethod(returnType, paramTypes));
-            moveToItemCt.instrument(new ExprEditor() {
-                @Override
-                public void edit(MethodCall methodCall) throws CannotCompileException {
-                    if (Objects.equals("getSizeX", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 3545) {
-                        logger.log(Level.FINE, "moveToItem method,  edit call to " +
-                                methodCall.getMethodName() + " at index " + methodCall.indexOfBytecode());
-                        methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                        successes[0] = 1;
-                    } else if (Objects.equals("getSizeY", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 3566) {
-                        logger.log(Level.FINE, "moveToItem method,  edit call to " +
-                                methodCall.getMethodName() + " at index " + methodCall.indexOfBytecode());
-                        methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                        successes[1] = 1;
-                    } else if (Objects.equals("getSizeZ", methodCall.getMethodName()) && methodCall.indexOfBytecode() == 3587) {
-                        logger.log(Level.FINE, "moveToItem method,  edit call to " +
-                                methodCall.getMethodName() + " at index " + methodCall.indexOfBytecode());
-                        methodCall.replace("$_ = java.lang.Integer.MAX_VALUE;");
-                        successes[2] = 1;
-                    } else if (Objects.equals("hasSpaceFor", methodCall.getMethodName())) {
-                        logger.log(Level.FINE, "moveToItem method,  edit call to " +
-                                methodCall.getMethodName() + " at index " + methodCall.getLineNumber());
-                        methodCall.replace("$_ = true;");
-                        successes[3] = 1;
-                    }
-                }
-            });
-        }catch (NotFoundException | CannotCompileException e){
+
+            BytecodeTools find = new BytecodeTools(itemCt.getClassFile().getConstPool());
+            find.addAload(5);
+            find.findMethodIndex(Opcode.INVOKEVIRTUAL, "getSizeX", "()I", "com.wurmonline.server.items.Item");
+            find.addOpcode(Opcode.ALOAD_0);
+            find.findMethodIndex(Opcode.INVOKEVIRTUAL, "getSizeX", "()I", "com.wurmonline.server.items.Item");
+            find.codeBranching(Opcode.IF_ICMPLT, 465);
+            find.addAload(5);
+            find.findMethodIndex(Opcode.INVOKEVIRTUAL, "getSizeY", "()I", "com.wurmonline.server.items.Item");
+            find.addOpcode(Opcode.ALOAD_0);
+            find.findMethodIndex(Opcode.INVOKEVIRTUAL, "getSizeY", "()I", "com.wurmonline.server.items.Item");
+            find.codeBranching(Opcode.IF_ICMPLT, 453);
+            find.addAload(5);
+            find.findMethodIndex(Opcode.INVOKEVIRTUAL, "getSizeZ", "()I", "com.wurmonline.server.items.Item");
+            find.addOpcode(Opcode.ALOAD_0);
+            find.findMethodIndex(Opcode.INVOKEVIRTUAL, "getSizeZ", "()I", "com.wurmonline.server.items.Item");
+            find.codeBranching(Opcode.IF_ICMPLE, 441);
+
+            BytecodeTools replace = new BytecodeTools(itemCt.getClassFile().getConstPool());
+            replace.addAload(5);
+            replace.findMethodIndex(Opcode.INVOKEVIRTUAL, "getSizeX", "()I", "com.wurmonline.server.items.Item");
+            replace.addOpcode(Opcode.ALOAD_0);
+            replace.findMethodIndex(Opcode.INVOKEVIRTUAL, "getSizeX", "()I", "com.wurmonline.server.items.Item");
+            replace.addOpcode(Opcode.POP2);
+            replace.addOpcode(Opcode.ICONST_0);
+            replace.codeBranching(Opcode.IFEQ, 469);
+            replace.addAload(5);
+            replace.findMethodIndex(Opcode.INVOKEVIRTUAL, "getSizeY", "()I", "com.wurmonline.server.items.Item");
+            replace.addOpcode(Opcode.ALOAD_0);
+            replace.findMethodIndex(Opcode.INVOKEVIRTUAL, "getSizeY", "()I", "com.wurmonline.server.items.Item");
+            replace.addOpcode(Opcode.POP2);
+            replace.addOpcode(Opcode.ICONST_0);
+            replace.codeBranching(Opcode.IFEQ, 455);
+            replace.addAload(5);
+            replace.findMethodIndex(Opcode.INVOKEVIRTUAL, "getSizeZ", "()I", "com.wurmonline.server.items.Item");
+            replace.addOpcode(Opcode.ALOAD_0);
+            replace.findMethodIndex(Opcode.INVOKEVIRTUAL, "getSizeZ", "()I", "com.wurmonline.server.items.Item");
+            replace.addOpcode(Opcode.POP2);
+            replace.addOpcode(Opcode.ICONST_0);
+            replace.codeBranching(Opcode.IFEQ, 441);
+
+            CodeReplacer codeReplacer = new CodeReplacer(moveToItemCt.getMethodInfo().getCodeAttribute());
+            codeReplacer.replaceCode(find.get(), replace.get());
+            moveToItemCt.getMethodInfo().rebuildStackMapIf6(HookManager.getInstance().getClassPool(), itemCt.getClassFile());
+            successes[0] = 1;
+
+        }catch (NotFoundException | BadBytecode e){
             logger.fine(e.getMessage());
             return successes;
         }
